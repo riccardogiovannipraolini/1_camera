@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="it">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Camera di Nascita - Prototipo</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+    <div id="game-container">
+        <!-- Title Screen overlay -->
+        <div id="title-screen" class="game-screen">
+            <div id="ts-logo">NAMELESS</div>
+            <div id="ts-vessillo">
+                <img src="assets/vessillo-chiesa.png" alt="Chiesa del Ritorno" />
+            </div>
+            <div id="ts-prompt">[RISVEGLIO]</div>
+        </div>
+
+        <!-- Canvas for animations and rendering -->
+        <canvas id="game-canvas"></canvas>
+
+        <!-- UI overlay for text and interactions -->
+        <div id="ui-overlay">
+            <div id="intro-text" class="fade-text hidden">
+                Svegliati, pellegrino.
+            </div>
+
+            <div id="tutorial-ui" class="hidden">
+                <div id="interaction-prompt">Cerchio 1/7 — Tieni premuto →</div>
+                <div id="progress-indicator"></div>
+            </div>
+
+            <!-- Hold-to-Interact Progress Bar -->
+            <div id="progress-container" class="hidden">
+                <div id="progress-bar"></div>
+                <div id="progress-text">0%</div>
+            </div>
+
+            <div id="choice-ui" class="hidden">
+                <div class="choice-container">
+                    <button class="choice-btn" id="choice-a">DORMI</button>
+                    <button class="choice-btn" id="choice-b">RUBA</button>
+                </div>
+            </div>
+
+            <div id="reverse-narrative" class="hidden"></div>
+            <div id="exit-narrative" class="hidden"></div>
+        </div>
+
+        <!-- Debug panel -->
+        <div id="debug-panel">
+            <div id="state-display">State: INTRO</div>
+            <div id="fps-counter">FPS: 0</div>
+        </div>
+    </div>
+
+    <script src="game.js"></script>
+</body>
+
+</html>

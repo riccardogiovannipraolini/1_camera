@@ -1,0 +1,331 @@
+/* Reset and base styles */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Courier New', monospace;
+    background: #000;
+    overflow: hidden;
+    color: #fff;
+}
+
+/* Game container - 1920x1080 base, responsive */
+#game-container {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #000;
+}
+
+/* Canvas */
+#game-canvas {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    max-width: 100%;
+    max-height: 100%;
+    background: #000;
+}
+
+/* UI Overlay */
+#ui-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 10;
+}
+
+#ui-overlay>* {
+    pointer-events: auto;
+}
+
+/* Intro text */
+#intro-text {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: clamp(24px, 4vw, 48px);
+    text-align: center;
+    color: #f0e6d2;
+    text-shadow: 0 0 20px rgba(240, 230, 210, 0.5);
+    letter-spacing: 0.1em;
+    opacity: 0;
+    transition: opacity 2s ease-in-out;
+}
+
+#intro-text.visible {
+    opacity: 1;
+}
+
+.fade-text.hidden {
+    display: none;
+}
+
+/* Tutorial UI */
+#tutorial-ui {
+    position: absolute;
+    bottom: 10%;
+    left: 50%;
+    transform: translateX(-50%);
+    text-align: center;
+}
+
+#interaction-prompt {
+    font-size: clamp(16px, 2vw, 24px);
+    margin-bottom: 20px;
+    color: #f0e6d2;
+}
+
+#progress-indicator {
+    width: 300px;
+    height: 8px;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 4px;
+    overflow: hidden;
+    margin: 0 auto;
+}
+
+#progress-indicator::after {
+    content: '';
+    display: block;
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, #f0e6d2, #d4af37);
+    transition: width 0.3s ease;
+}
+
+/* Choice UI */
+#choice-ui {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    padding-bottom: 20%;
+    opacity: 0;
+    transition: opacity 0.8s ease-in-out;
+    pointer-events: none;
+}
+
+#choice-ui.visible {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+/* Hold-to-Interact Progress Bar */
+#progress-container {
+    position: absolute;
+    bottom: 100px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: clamp(250px, 25vw, 400px);
+    height: 36px;
+    background: rgba(0, 0, 0, 0.75);
+    border: 2px solid rgba(240, 230, 210, 0.6);
+    border-radius: 4px;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: box-shadow 0.3s ease;
+}
+
+#progress-bar {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 0%;
+    height: 100%;
+    background: linear-gradient(90deg, rgba(212, 175, 55, 0.6), rgba(212, 175, 55, 0.9));
+    transition: width 0.05s linear;
+    z-index: 1;
+}
+
+#progress-text {
+    position: relative;
+    z-index: 2;
+    fontSize: 16px;
+    color: #f0e6d2;
+    text-shadow: 0 0 4px rgba(0, 0, 0, 0.8);
+    letter-spacing: 0.05em;
+}
+
+.choice-container {
+    display: flex;
+    gap: 80px;
+    justify-content: center;
+    align-items: center;
+}
+
+.choice-btn {
+    padding: 20px 60px;
+    font-size: 28px;
+    font-family: 'Georgia', serif;
+    letter-spacing: 4px;
+    background: rgba(0, 0, 0, 0.85);
+    color: rgba(255, 255, 255, 0.8);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    cursor: pointer;
+    transition: all 0.4s ease;
+    text-transform: uppercase;
+}
+
+.choice-btn:hover,
+.choice-btn:focus {
+    background: rgba(255, 255, 255, 0.1);
+    color: white;
+    border-color: white;
+    transform: scale(1.05);
+    outline: none;
+}
+
+/* Reverse Narrative */
+#reverse-narrative {
+    position: absolute;
+    top: 40%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: clamp(16px, 2vw, 26px);
+    color: #f0e6d2;
+    text-align: center;
+    text-shadow: 0 0 20px rgba(240, 230, 210, 0.5);
+    letter-spacing: 0.06em;
+    font-style: italic;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    pointer-events: none;
+    max-width: 70vw;
+}
+
+/* Exit Narrative */
+#exit-narrative {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: clamp(20px, 3vw, 40px);
+    color: #f0e6d2;
+    text-align: center;
+    text-shadow: 0 0 25px rgba(240, 230, 210, 0.6);
+    letter-spacing: 0.1em;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+    pointer-events: none;
+    max-width: 80vw;
+}
+
+/* Title Screen */
+#title-screen {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: #000;
+    z-index: 100;
+    transition: opacity 1s ease;
+}
+
+#ts-logo {
+    font-size: 72px;
+    font-family: 'Georgia', serif;
+    color: #fff;
+    letter-spacing: 16px;
+    text-transform: uppercase;
+    opacity: 0;
+    transition: opacity 2s ease-in;
+}
+
+#ts-vessillo {
+    margin-top: 40px;
+    opacity: 0;
+    transition: opacity 2s ease-in;
+}
+
+#ts-vessillo img {
+    max-width: 200px;
+    filter: invert(1);
+}
+
+#ts-prompt {
+    margin-top: 80px;
+    font-size: 20px;
+    font-family: 'Georgia', serif;
+    color: rgba(255, 255, 255, 0.5);
+    letter-spacing: 10px;
+    opacity: 0;
+    transition: opacity 1.5s ease-in;
+}
+
+#ts-prompt.visible {
+    animation: prompt-pulse 3s ease-in-out infinite;
+}
+
+@keyframes prompt-pulse {
+
+    0%,
+    100% {
+        opacity: 0.3;
+    }
+
+    50% {
+        opacity: 0.7;
+    }
+}
+
+/* Debug panel */
+#debug-panel {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    background: rgba(0, 0, 0, 0.8);
+    padding: 15px;
+    border: 1px solid #333;
+    font-size: 14px;
+    font-family: 'Courier New', monospace;
+    color: #0f0;
+    z-index: 100;
+    pointer-events: none;
+}
+
+#state-display {
+    margin-bottom: 5px;
+}
+
+#fps-counter {
+    color: #ff0;
+}
+
+/* Utility classes */
+.hidden {
+    display: none !important;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .choice-container {
+        flex-direction: column;
+        gap: 20px;
+    }
+
+    .choice-button {
+        width: 100%;
+        max-width: 300px;
+    }
+}
