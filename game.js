@@ -5,6 +5,8 @@
 // Session 3: Birth Chamber Visual - 7 Rotating Circles
 // Session 4: Tutorial Sequence - 7 Sequential Interactions
 // Session 5: Narrative Choice UI + Reverse Sequence
+// Session 8: Final Sequence — Mask + Cards + Flash
+// Session 9: Blood Two-Phase + Player-Driven Exit
 // ============================================
 
 // Canvas setup
@@ -44,7 +46,7 @@ circleImage2.onload = onAssetLoad;
 // STATE MACHINE
 // ============================================
 
-const GameState = { TITLE_SCREEN: 'title_screen', INTRO: 'intro', SETUP: 'setup', TUTORIAL: 'tutorial', CHOICE: 'choice', EXIT: 'exit' };
+const GameState = { TITLE_SCREEN: 'title_screen', INTRO: 'intro', SETUP: 'setup', TUTORIAL: 'tutorial', CHOICE: 'choice', FINAL_SEQUENCE: 'final_sequence', BLOOD_EXIT: 'blood_exit', EXIT: 'exit' };
 let currentState = GameState.TITLE_SCREEN;
 let stateTimer = 0;
 let deltaTime = 0;
@@ -75,6 +77,8 @@ function onStateEnter(state) {
         case GameState.SETUP: startSetup(); break;
         case GameState.TUTORIAL: startTutorial(); break;
         case GameState.CHOICE: startChoice(); break;
+        case GameState.FINAL_SEQUENCE: runFinalSequence(); break;
+        case GameState.BLOOD_EXIT: runBloodAndExit(); break;
         case GameState.EXIT: startExit(); break;
     }
 }
@@ -87,6 +91,8 @@ function updateState() {
         case GameState.SETUP: updateSetup(); break;
         case GameState.TUTORIAL: updateTutorial(); break;
         case GameState.CHOICE: updateChoice(); break;
+        case GameState.FINAL_SEQUENCE: updateCommon(); break;
+        case GameState.BLOOD_EXIT: updateBloodExit(); break;
         case GameState.EXIT: updateExit(); break;
     }
 }
@@ -98,6 +104,8 @@ function renderState() {
         case GameState.SETUP: renderSetup(); break;
         case GameState.TUTORIAL: renderTutorial(); break;
         case GameState.CHOICE: renderChoice(); break;
+        case GameState.FINAL_SEQUENCE: renderChamber(1); break;
+        case GameState.BLOOD_EXIT: renderBloodExit(); break;
         case GameState.EXIT: renderExit(); break;
     }
 }
@@ -386,6 +394,32 @@ function playSFX(type) {
             o.start(now); o.stop(now + 0.08);
             break;
         }
+        // Session 9: Laceration — wet tearing noise
+        case 'laceration': {
+            const bufSize = audioCtx.sampleRate * 1.2;
+            const buf = audioCtx.createBuffer(1, bufSize, audioCtx.sampleRate);
+            const d = buf.getChannelData(0);
+            for (let i = 0; i < bufSize; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / bufSize) * 0.8;
+            const n = audioCtx.createBufferSource(); n.buffer = buf;
+            const bpf = audioCtx.createBiquadFilter(); bpf.type = 'bandpass';
+            bpf.frequency.setValueAtTime(2000, now); bpf.frequency.exponentialRampToValueAtTime(200, now + 1.2); bpf.Q.value = 3;
+            const g = audioCtx.createGain(); g.gain.setValueAtTime(0.35, now); g.gain.exponentialRampToValueAtTime(0.001, now + 1.2);
+            n.connect(bpf).connect(g).connect(audioCtx.destination); n.start(now); n.stop(now + 1.2);
+            // Low rumble underneath
+            const rumble = audioCtx.createOscillator(); rumble.frequency.value = 50; rumble.type = 'sine';
+            const rg = audioCtx.createGain(); rg.gain.setValueAtTime(0.15, now); rg.gain.exponentialRampToValueAtTime(0.001, now + 1.5);
+            rumble.connect(rg).connect(audioCtx.destination); rumble.start(now); rumble.stop(now + 1.5);
+            break;
+        }
+        // Session 9: Portal crossing — deep resonant chord
+        case 'portal_cross': {
+            [55, 82.4, 110, 146.8].forEach(freq => {
+                const o = audioCtx.createOscillator(); o.frequency.value = freq; o.type = 'sine';
+                const g = audioCtx.createGain(); g.gain.setValueAtTime(0.12, now); g.gain.setTargetAtTime(0.001, now + 1, 1);
+                o.connect(g).connect(audioCtx.destination); o.start(now); o.stop(now + 3);
+            });
+            break;
+        }
     }
 }
 
@@ -435,6 +469,18 @@ let exitNarrativeTimer = 0;
 let exitNarrativeAlpha = 0;
 let reverseNarrativeAlpha = 0;
 
+// Session 8: Final sequence state
+let maskGlowDimmed = false;    // true after mask theft — dims sarcophagus golden glow
+let hasCloak = false;           // true after PG wraps shroud — adds white cloak to character
+
+// Session 9: Blood & exit state
+let bloodPhase = 'none';         // 'none' | 'laceration' | 'reveal' | 'submerge' | 'player_exit'
+let bloodRevealProgress = 0;     // 0→1, controls floor geometry red tint
+let bloodSubmergeProgress = 0;   // 0→1, controls geometry fade-out
+let playerExitEnabled = false;   // true when player can move freely
+let cloakRed = false;            // true after portal crossing
+let portalCrossed = false;       // prevents re-triggering
+
 // ============================================
 // VISUAL EFFECTS
 // ============================================
@@ -475,16 +521,13 @@ function stopCircle(circleIndex) {
 function drawGearCircle(centerX, centerY, circle, scale, index) {
     if (assetsLoaded < 2) return; // wait for assets
 
-    // Alternate assets: Even = circle.png, Odd = circle_variant.png
     const img = (index % 2 === 0) ? circleImage : circleImage2;
 
     const scaledRadius = circle.radius * scale;
-    // The image is 1024x1024; we want each circle's diameter to span ~2.4× its radius
-    // so that the bone ring visually sits at the right position
     const imgSize = scaledRadius * 2.4;
     let flashBoost = circle.stopFlashTimer > 0 ? circle.stopFlashTimer * 0.5 : 0;
 
-    // --- TRAIL / AFTERIMAGE (faded copy at previous angle) ---
+    // --- TRAIL / AFTERIMAGE ---
     if (!circle.isStopped && Math.abs(circle.prevAngle - circle.currentAngle) > 0.001) {
         ctx.save();
         ctx.globalAlpha = (ctx.globalAlpha || 1) * 0.08;
@@ -494,61 +537,182 @@ function drawGearCircle(centerX, centerY, circle, scale, index) {
         ctx.restore();
     }
 
-    // --- MAIN CIRCLE IMAGE ---
     ctx.save();
     ctx.translate(centerX, centerY);
-    ctx.rotate(circle.currentAngle);
 
-    // Glow effect
+    // --- GLOW EFFECT (Optimized via Radial Gradient instead of shadowBlur) ---
+    // Extract base alpha from the rgba string to scale it
+    const glowAlphaStr = circle.glowColor.match(/[\d.]+\)$/);
+    const baseAlpha = glowAlphaStr ? parseFloat(glowAlphaStr[0]) : 0.4;
+
+    let glowR, glowColorObj;
     if (flashBoost > 0) {
-        ctx.shadowColor = 'rgba(212, 175, 55, 0.6)';
-        ctx.shadowBlur = (20 + flashBoost * 40) * scale;
+        glowR = (imgSize / 2) + (20 + flashBoost * 40) * scale;
+        glowColorObj = `rgba(212, 175, 55, ${0.6 * flashBoost})`;
     } else {
-        ctx.shadowColor = circle.glowColor;
-        ctx.shadowBlur = 8 * scale;
+        glowR = (imgSize / 2) + 8 * scale;
+        glowColorObj = circle.glowColor.replace(/[\d.]+\)$/, `${baseAlpha})`);
     }
 
+    // Draw optimized circular glow
+    const grad = ctx.createRadialGradient(0, 0, (imgSize / 2) * 0.6, 0, 0, glowR);
+    grad.addColorStop(0, 'rgba(0,0,0,0)');
+    grad.addColorStop(0.8, glowColorObj);
+    grad.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(0, 0, glowR, 0, Math.PI * 2);
+    ctx.fill();
+
+    // --- MAIN CIRCLE IMAGE ---
+    ctx.rotate(circle.currentAngle);
     ctx.drawImage(img, -imgSize / 2, -imgSize / 2, imgSize, imgSize);
-    ctx.restore();
 
     // --- GOLD TINT for stopped circles ---
     if (circle.isStopped) {
-        ctx.save();
-        ctx.translate(centerX, centerY);
-        ctx.rotate(circle.currentAngle);
-        ctx.globalCompositeOperation = 'source-atop';
         const tintAlpha = 0.25 + Math.sin(stateTimer * 0.003) * 0.08;
-        ctx.fillStyle = `rgba(212, 175, 55, ${tintAlpha})`;
-        ctx.fillRect(-imgSize / 2, -imgSize / 2, imgSize, imgSize);
+        // Optimization: Instead of slow source-atop rectangular fill, 
+        // draw the same image tinted using globalCompositeOperation 'source-atop' onto an offscreen canvas is slow,
+        // so we use a faster approach: 'color' or 'overlay' blend mode directly with a circular shape
+        ctx.globalCompositeOperation = 'overlay';
+        ctx.fillStyle = `rgba(212, 175, 55, ${tintAlpha * 0.8})`;
+        ctx.beginPath();
+        // The image ring is approximately between 0.2 and 0.5 of imgSize
+        ctx.arc(0, 0, imgSize * 0.45, 0, Math.PI * 2);
+        ctx.arc(0, 0, imgSize * 0.25, 0, Math.PI * 2, true);
+        ctx.fill();
         ctx.globalCompositeOperation = 'source-over';
-        ctx.restore();
     }
+
+    ctx.restore();
 }
 
-function drawFloorPattern(centerX, centerY, scale, rotation) {
+function drawFloorPattern(centerX, centerY, scale, rotation, bloodTint) {
+    const t = bloodTint || 0; // 0 = normal grey, 1 = full red
     ctx.save(); ctx.translate(centerX, centerY); ctx.rotate(rotation);
-    const maxRadius = 400 * scale;
-    ctx.strokeStyle = 'rgba(80, 80, 90, 0.15)'; ctx.lineWidth = 1 * scale;
+    const maxR = 350 * scale; // stay within innermost gear circle (370)
+
+    // Color interpolation helpers
+    const col = (rBase, gBase, bBase, aBase, rEnd, gEnd, bEnd, aEnd) => {
+        const r = Math.round(rBase + t * (rEnd - rBase));
+        const g = Math.round(gBase + t * (gEnd - gBase));
+        const b = Math.round(bBase + t * (bEnd - bBase));
+        const a = aBase + t * (aEnd - aBase);
+        return `rgba(${r},${g},${b},${a})`;
+    };
+
+    const mainCol = col(80, 80, 90, 0.12, 255, 40, 40, 1);
+    const secCol = col(70, 70, 80, 0.08, 220, 30, 30, 0.8);
+    const fineCol = col(60, 60, 70, 0.06, 180, 25, 25, 0.6);
+    const dotCol = col(90, 90, 100, 0.12, 255, 50, 50, 1);
+    const lw = (1 + t * 2) * scale;
+    const lwFine = (0.6 + t * 1.2) * scale;
+
+    // --- Phase 1: Main axes and Level 1 branches ---
+    ctx.beginPath();
     for (let i = 0; i < 6; i++) {
         const angle = (i / 6) * Math.PI * 2;
-        ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(Math.cos(angle) * maxRadius, Math.sin(angle) * maxRadius); ctx.stroke();
+        const ex = Math.cos(angle) * maxR, ey = Math.sin(angle) * maxR;
+        ctx.moveTo(0, 0); ctx.lineTo(ex, ey);
+
         for (let j = 1; j <= 4; j++) {
-            const bd = (j / 4) * maxRadius * 0.8, bl = maxRadius * 0.15 * (1 - j * 0.15);
-            const bx = Math.cos(angle) * bd, by = Math.sin(angle) * bd;
-            ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(bx + Math.cos(angle + Math.PI / 6) * bl, by + Math.sin(angle + Math.PI / 6) * bl); ctx.stroke();
-            ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(bx + Math.cos(angle - Math.PI / 6) * bl, by + Math.sin(angle - Math.PI / 6) * bl); ctx.stroke();
+            const dist = (j / 4.5) * maxR;
+            const bLen = maxR * 0.22 * (1 - j * 0.12);
+            const bx = Math.cos(angle) * dist, by = Math.sin(angle) * dist;
+            const aPlus = angle + Math.PI / 6, aMinus = angle - Math.PI / 6;
+
+            const bpx = bx + Math.cos(aPlus) * bLen, bpy = by + Math.sin(aPlus) * bLen;
+            const bmx = bx + Math.cos(aMinus) * bLen, bmy = by + Math.sin(aMinus) * bLen;
+            ctx.moveTo(bx, by); ctx.lineTo(bpx, bpy);
+            ctx.moveTo(bx, by); ctx.lineTo(bmx, bmy);
         }
     }
-    ctx.strokeStyle = 'rgba(70, 70, 80, 0.1)';
-    for (let ring = 1; ring <= 5; ring++) {
-        const rr = (ring / 5) * maxRadius * 0.9;
-        ctx.beginPath(); for (let i = 0; i <= 6; i++) { const a = (i / 6) * Math.PI * 2 - Math.PI / 6; if (i === 0) ctx.moveTo(Math.cos(a) * rr, Math.sin(a) * rr); else ctx.lineTo(Math.cos(a) * rr, Math.sin(a) * rr); } ctx.closePath(); ctx.stroke();
+    ctx.strokeStyle = mainCol; ctx.lineWidth = lw; ctx.stroke();
+
+    // --- Phase 2: Level 2 branches and Concentric Hexagons ---
+    ctx.beginPath();
+    for (let i = 0; i < 6; i++) {
+        const angle = (i / 6) * Math.PI * 2;
+        for (let j = 1; j <= 3; j++) { // Only first 3 for sub-branches
+            const dist = (j / 4.5) * maxR;
+            const bLen = maxR * 0.22 * (1 - j * 0.12);
+            const bx = Math.cos(angle) * dist, by = Math.sin(angle) * dist;
+            const subLen = bLen * 0.5;
+
+            for (const baseA of [angle + Math.PI / 6, angle - Math.PI / 6]) {
+                const bex = bx + Math.cos(baseA) * bLen, bey = by + Math.sin(baseA) * bLen;
+                const mid = 0.55;
+                const mx = bx + (bex - bx) * mid, my = by + (bey - by) * mid;
+
+                ctx.moveTo(mx, my); ctx.lineTo(mx + Math.cos(baseA + Math.PI / 5) * subLen, my + Math.sin(baseA + Math.PI / 5) * subLen);
+                ctx.moveTo(mx, my); ctx.lineTo(mx + Math.cos(baseA - Math.PI / 5) * subLen, my + Math.sin(baseA - Math.PI / 5) * subLen);
+            }
+        }
     }
-    ctx.fillStyle = 'rgba(90, 90, 100, 0.15)';
-    for (let ring = 1; ring <= 5; ring++) {
-        const rr = (ring / 5) * maxRadius * 0.9;
-        for (let i = 0; i < 6; i++) { const a = (i / 6) * Math.PI * 2; ctx.beginPath(); ctx.arc(Math.cos(a) * rr, Math.sin(a) * rr, 2 * scale, 0, Math.PI * 2); ctx.fill(); }
+    // Hexagons
+    for (let ring = 1; ring <= 6; ring++) {
+        const rr = (ring / 6.5) * maxR;
+        for (let i = 0; i <= 6; i++) {
+            const a = (i / 6) * Math.PI * 2 - Math.PI / 6;
+            if (i === 0) ctx.moveTo(Math.cos(a) * rr, Math.sin(a) * rr);
+            else ctx.lineTo(Math.cos(a) * rr, Math.sin(a) * rr);
+        }
     }
+    ctx.strokeStyle = secCol; ctx.lineWidth = lwFine; ctx.stroke();
+
+    // --- Phase 3: Level 3 tiny fronds and Cross-hatching ---
+    ctx.beginPath();
+    for (let i = 0; i < 6; i++) {
+        const angle = (i / 6) * Math.PI * 2;
+        for (let j = 1; j <= 2; j++) { // Only first 2 for fronds
+            const dist = (j / 4.5) * maxR;
+            const bLen = maxR * 0.22 * (1 - j * 0.12);
+            const bx = Math.cos(angle) * dist, by = Math.sin(angle) * dist;
+            const tinyLen = (bLen * 0.5) * 0.45;
+
+            for (const baseA of [angle + Math.PI / 6, angle - Math.PI / 6]) {
+                const bex = bx + Math.cos(baseA) * bLen, bey = by + Math.sin(baseA) * bLen;
+                ctx.moveTo(bex, bey); ctx.lineTo(bex + Math.cos(baseA + Math.PI / 4) * tinyLen, bey + Math.sin(baseA + Math.PI / 4) * tinyLen);
+                ctx.moveTo(bex, bey); ctx.lineTo(bex + Math.cos(baseA - Math.PI / 4) * tinyLen, bey + Math.sin(baseA - Math.PI / 4) * tinyLen);
+            }
+        }
+    }
+    // Cross-hatching
+    for (let i = 0; i < 6; i++) {
+        const a1 = (i / 6) * Math.PI * 2, a2 = ((i + 1) / 6) * Math.PI * 2;
+        for (let d = 0.3; d <= 0.8; d += 0.25) {
+            ctx.moveTo(Math.cos(a1) * maxR * d, Math.sin(a1) * maxR * d);
+            ctx.lineTo(Math.cos(a2) * maxR * d, Math.sin(a2) * maxR * d);
+        }
+    }
+    ctx.strokeStyle = fineCol; ctx.lineWidth = lwFine * 0.6; ctx.stroke();
+
+    // --- Phase 4: Diamonds and dots ---
+    ctx.fillStyle = dotCol;
+    const ds = (2.5 + t * 2) * scale;
+    ctx.save(); ctx.rotate(Math.PI / 4);
+    ctx.fillRect(-ds, -ds, ds * 2, ds * 2);
+    ctx.restore();
+    for (let ring = 1; ring <= 5; ring++) {
+        const rr = (ring / 5.5) * maxR;
+        for (let i = 0; i < 6; i++) {
+            const nx = Math.cos((i / 6) * Math.PI * 2) * rr, ny = Math.sin((i / 6) * Math.PI * 2) * rr;
+            ctx.save(); ctx.translate(nx, ny); ctx.rotate(Math.PI / 4);
+            ctx.fillRect(-ds * 0.7, -ds * 0.7, ds * 1.4, ds * 1.4);
+            ctx.restore();
+        }
+    }
+    ctx.beginPath();
+    for (let ring = 2; ring <= 5; ring += 2) {
+        const rr = (ring / 6.5) * maxR;
+        for (let i = 0; i < 6; i++) {
+            const a = (i / 6) * Math.PI * 2 - Math.PI / 6;
+            ctx.moveTo(Math.cos(a) * rr, Math.sin(a) * rr);
+            ctx.arc(Math.cos(a) * rr, Math.sin(a) * rr, ds * 0.5, 0, Math.PI * 2);
+        }
+    }
+    ctx.fill();
+
     ctx.restore();
 }
 
@@ -562,9 +726,15 @@ function drawSarcophagus(centerX, centerY, scale) {
     ctx.closePath(); ctx.fill();
     ctx.strokeStyle = 'rgba(140,130,110,0.6)'; ctx.lineWidth = 1.5 * scale; ctx.stroke();
     const my = centerY - h * 0.15, mw = w * 0.6, mh = h * 0.35;
-    ctx.shadowColor = 'rgba(212,175,55,0.4)'; ctx.shadowBlur = 15 * scale;
-    ctx.fillStyle = 'rgba(212,175,55,0.7)'; ctx.beginPath(); ctx.ellipse(centerX, my, mw / 2, mh / 2, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.strokeStyle = 'rgba(230,200,80,0.8)'; ctx.lineWidth = 1 * scale; ctx.stroke(); ctx.shadowBlur = 0;
+    if (maskGlowDimmed) {
+        ctx.shadowColor = 'rgba(100,80,40,0.15)'; ctx.shadowBlur = 5 * scale;
+        ctx.fillStyle = 'rgba(120,100,50,0.4)'; ctx.beginPath(); ctx.ellipse(centerX, my, mw / 2, mh / 2, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = 'rgba(130,110,60,0.4)'; ctx.lineWidth = 1 * scale; ctx.stroke(); ctx.shadowBlur = 0;
+    } else {
+        ctx.shadowColor = 'rgba(212,175,55,0.4)'; ctx.shadowBlur = 15 * scale;
+        ctx.fillStyle = 'rgba(212,175,55,0.7)'; ctx.beginPath(); ctx.ellipse(centerX, my, mw / 2, mh / 2, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = 'rgba(230,200,80,0.8)'; ctx.lineWidth = 1 * scale; ctx.stroke(); ctx.shadowBlur = 0;
+    }
     ctx.fillStyle = 'rgba(20,15,10,0.9)';
     ctx.beginPath(); ctx.ellipse(centerX - mw * 0.28, my - mh * 0.05, mw * 0.18, mh * 0.12, 0, 0, Math.PI * 2); ctx.fill();
     ctx.beginPath(); ctx.ellipse(centerX + mw * 0.28, my - mh * 0.05, mw * 0.18, mh * 0.12, 0, 0, Math.PI * 2); ctx.fill();
@@ -682,7 +852,17 @@ function drawCharacter(centerX, centerY, scale, charX, charY, pose, poseTimer) {
             ctx.beginPath(); ctx.moveTo(-6 * s, -4 * s); ctx.quadraticCurveTo(-11 * s, 6 * s, -7 * s, 16 * s); ctx.stroke();
             ctx.beginPath(); ctx.moveTo(6 * s, -4 * s); ctx.quadraticCurveTo(11 * s, 6 * s, 7 * s, 16 * s); ctx.stroke();
             ctx.beginPath(); ctx.moveTo(-3 * s, 16 * s); ctx.lineTo(-4 * s, 28 * s); ctx.stroke();
-            ctx.beginPath(); ctx.moveTo(3 * s, 16 * s); ctx.lineTo(4 * s, 28 * s); ctx.stroke(); break;
+            ctx.beginPath(); ctx.moveTo(3 * s, 16 * s); ctx.lineTo(4 * s, 28 * s); ctx.stroke();
+            // Session 8: Cloak overlay (white or red)
+            if (hasCloak) {
+                const cStroke = cloakRed ? 'rgba(160,30,30,0.6)' : 'rgba(240,235,225,0.5)';
+                const cFill = cloakRed ? 'rgba(140,20,20,0.25)' : 'rgba(240,235,225,0.2)';
+                ctx.strokeStyle = cStroke; ctx.lineWidth = 4 * s;
+                ctx.beginPath(); ctx.moveTo(-8 * s, -10 * s); ctx.quadraticCurveTo(0, 5 * s, 8 * s, -10 * s); ctx.stroke();
+                ctx.fillStyle = cFill;
+                ctx.beginPath(); ctx.ellipse(0, 2 * s, 9 * s, 19 * s, 0, 0, Math.PI * 2); ctx.fill();
+            }
+            break;
     }
     ctx.restore();
 }
@@ -881,14 +1061,15 @@ function renderChamber(alpha) {
     }
     drawBurstParticles(centerX, centerY, scale);
     // Cord
-    if (currentState === GameState.TUTORIAL || currentState === GameState.CHOICE) {
+    const isActiveState = currentState === GameState.TUTORIAL || currentState === GameState.CHOICE || currentState === GameState.FINAL_SEQUENCE || currentState === GameState.BLOOD_EXIT;
+    if (isActiveState) {
         drawUmbilicalCord(centerX, centerY, scale, characterX, characterY, cordAttached, cordStretch);
     } else {
         drawUmbilicalCord(centerX, centerY, scale, COCOON_POS.x, COCOON_POS.y, true, 0);
     }
-    const bl = (currentState === GameState.TUTORIAL || currentState === GameState.CHOICE) ? cocoonBreakLevel : 0;
+    const bl = isActiveState ? cocoonBreakLevel : 0;
     drawCocoon(centerX, centerY, scale, cocoonPulse, bl);
-    if ((currentState === GameState.TUTORIAL && tutorialStep > 0) || currentState === GameState.CHOICE) {
+    if ((currentState === GameState.TUTORIAL && tutorialStep > 0) || currentState === GameState.CHOICE || currentState === GameState.FINAL_SEQUENCE || currentState === GameState.BLOOD_EXIT) {
         drawCharacter(centerX, centerY, scale, characterX, characterY, characterPose, characterPoseTimer);
     }
     drawSarcophagus(centerX, centerY, scale);
@@ -946,8 +1127,16 @@ function selectChoice(choice) {
         startReverseSequence();
     } else {
         const type = choice === 'a' ? 'surrender' : (choiceLoopCount >= 3 ? 'escape' : 'steal');
-        startFinalSequence(type);
-        setTimeout(() => changeState(GameState.EXIT), 800);
+        exitType = type;
+        if (type === 'surrender') {
+            // Surrender goes directly to EXIT (no mask sequence)
+            playSFX('deep');
+            setTimeout(() => changeState(GameState.EXIT), 800);
+        } else {
+            // Steal/Escape triggers the full final sequence
+            playSFX('final');
+            changeState(GameState.FINAL_SEQUENCE);
+        }
     }
 }
 
@@ -1020,11 +1209,296 @@ function startReverseSequence() {
     console.log(`%c↺ Reverse sequence started (loop ${choiceLoopCount})`, 'color: #9C27B0; font-weight: bold;');
 }
 
-function startFinalSequence(type) {
-    exitType = type;
-    if (type === 'steal' || type === 'escape') playSFX('final');
-    else playSFX('deep');
-    console.log(`%c⚡ Final sequence: ${type}`, 'color: #FF5722; font-weight: bold;');
+// ============================================
+// SESSION 8: FINAL SEQUENCE — Mask + Cards + Flash
+// ============================================
+
+async function runFinalSequence() {
+    analytics.log('final_sequence_start', { loopCount: choiceLoopCount, exitType });
+    console.log(`%c⚡ Final sequence: ${exitType}`, 'color: #FF5722; font-weight: bold;');
+
+    const container = document.getElementById('final-sequence');
+    container.classList.remove('hidden');
+
+    // Step 1: Mask close-up (fade in 0.8s, hold 3s, fade out 0.8s)
+    const mask = document.getElementById('mask-overlay');
+    mask.classList.remove('hidden');
+    await sleep(50); // allow DOM paint
+    mask.classList.add('visible');
+    await sleep(3800); // 0.8s fade + 3s hold
+    mask.classList.remove('visible');
+    await sleep(800); // fade out
+
+    // Step 2: Subliminal flash — eyes B&W (~70ms)
+    const eyes = document.getElementById('eyes-flash');
+    eyes.classList.add('instant');
+    eyes.classList.remove('hidden');
+    eyes.style.opacity = '1';
+    await sleep(70); // ~70ms subliminal
+    eyes.style.opacity = '0';
+    await sleep(200); // brief black gap
+    eyes.classList.add('hidden');
+
+    // Step 3: Mask with 3 cards overlaid (2s)
+    const maskCards = document.getElementById('mask-cards');
+    maskCards.classList.remove('hidden');
+    await sleep(50);
+    maskCards.classList.add('visible');
+    await sleep(2500); // 2s hold + margin
+    maskCards.classList.remove('visible');
+    await sleep(800);
+
+    // Step 4: Back to game view — PG steals mask
+    container.classList.add('hidden');
+    mask.classList.add('hidden');
+    maskCards.classList.add('hidden');
+    animateMaskTheft();
+    await sleep(2000);
+
+    // Step 5: PG wraps shroud as cloak (white)
+    hasCloak = true;
+    console.log('%c🧥 Cloak acquired', 'color: #f0e6d2;');
+    await sleep(1000);
+
+    // Step 6: Lullaby dies (distorted fade — tape running out of energy)
+    killLullaby(3000);
+    await sleep(3000);
+
+    // Step 7: Card acquisition banner
+    container.classList.remove('hidden');
+    const banner = document.getElementById('card-banner');
+    banner.classList.remove('hidden');
+    await sleep(50);
+    banner.classList.add('visible');
+    analytics.log('cards_acquired', {
+        cards: ['Occhio Sinistro', 'Occhio Destro', 'Timpani', 'Carta Asemica']
+    });
+    await sleep(3500);
+    banner.classList.remove('visible');
+    await sleep(800);
+    banner.classList.add('hidden');
+    container.classList.add('hidden');
+
+    // Proceed to Session 9: blood + exit
+    startBloodAndExit();
+}
+
+function animateMaskTheft() {
+    // Mask on sarcophagus loses golden glow
+    maskGlowDimmed = true;
+    // Character reaches towards sarcophagus
+    characterPose = 'standing'; // reaching gesture handled visually
+    triggerScreenShake(4, 600);
+    console.log('%c🎭 Mask stolen — glow dimmed', 'color: #d4af37; font-weight: bold;');
+}
+
+function killLullaby(durationMs) {
+    if (!audioCtx || !lullabyOsc || !lullabyGain) return;
+    const now = audioCtx.currentTime;
+    const endTime = now + durationMs / 1000;
+    // Slow down frequency (like tape running out of energy)
+    lullabyOsc.frequency.setValueAtTime(lullabyOsc.frequency.value, now);
+    lullabyOsc.frequency.exponentialRampToValueAtTime(30, endTime);
+    // Increase detune for warbling effect
+    lullabyOsc.detune.setValueAtTime(lullabyOsc.detune.value, now);
+    lullabyOsc.detune.linearRampToValueAtTime(800, endTime);
+    // Fade volume to 0
+    lullabyGain.gain.setValueAtTime(lullabyGain.gain.value, now);
+    lullabyGain.gain.exponentialRampToValueAtTime(0.0001, endTime);
+    // Also fade the drone
+    if (droneGain) {
+        droneGain.gain.setValueAtTime(droneGain.gain.value, now);
+        droneGain.gain.exponentialRampToValueAtTime(0.0001, endTime);
+    }
+    console.log('%c🎵 Lullaby dying — tape-out effect', 'color: #9C27B0;');
+}
+
+function startBloodAndExit() {
+    changeState(GameState.BLOOD_EXIT);
+}
+
+// ============================================
+// SESSION 9: BLOOD TWO-PHASE + PLAYER EXIT
+// ============================================
+
+async function runBloodAndExit() {
+    analytics.log('blood_sequence_start');
+    console.log('%c🩸 Blood sequence — Phase A: Rivelazione', 'color: #F44336; font-weight: bold;');
+
+    // Step 1: Laceration tears open on right wall
+    const laceration = document.getElementById('laceration');
+    laceration.classList.remove('hidden');
+    laceration.classList.add('opening');
+    playSFX('laceration');
+    await sleep(2500);
+
+    // Step 2: Phase A — Rivelazione (blood reveals floor geometry)
+    bloodPhase = 'reveal';
+    analytics.log('blood_phase_a', { phase: 'rivelazione' });
+    console.log('%c🩸 Floor geometry revealing in red', 'color: #FF3333;');
+    await sleep(4500); // bloodRevealProgress animated in updateBloodExit
+
+    // Step 3: Phase B — Sommersione (blood rises, geometry drowns)
+    bloodPhase = 'submerge';
+    analytics.log('blood_phase_b', { phase: 'sommersione' });
+    console.log('%c🩸 Blood rising — geometry submerging', 'color: #8B0000;');
+    // Blood fill is canvas-drawn in renderBloodExit, no DOM overlay needed
+    await sleep(5500); // bloodSubmergeProgress animated in updateBloodExit
+
+    // Step 4: Show exit prompt — player must walk voluntarily
+    bloodPhase = 'player_exit';
+    enablePlayerMovement();
+    const exitPrompt = document.getElementById('exit-prompt');
+    exitPrompt.classList.remove('hidden');
+    exitPrompt.classList.add('visible');
+    analytics.log('exit_available');
+    console.log('%c→ Player exit enabled — ArrowRight/D to walk', 'color: #4CAF50; font-weight: bold;');
+
+    // Wait for player to reach portal zone
+    await waitForPlayerAtPortal();
+}
+
+function updateBloodExit() {
+    updateCommon();
+    // Advance blood reveal progress (Phase A: 0→1 over ~4s)
+    if (bloodPhase === 'reveal' && bloodRevealProgress < 1) {
+        bloodRevealProgress = Math.min(1, bloodRevealProgress + deltaTime / 4000);
+    }
+    // Advance submersion (Phase B: 0→1 over ~5s)
+    if (bloodPhase === 'submerge' && bloodSubmergeProgress < 1) {
+        bloodSubmergeProgress = Math.min(1, bloodSubmergeProgress + deltaTime / 5000);
+    }
+}
+
+function renderBloodExit() {
+    const scale = canvas.width / BASE_WIDTH;
+    let centerX = canvas.width / 2, centerY = canvas.height / 2;
+    // Screen shake
+    if (screenShake.timer < screenShake.duration) {
+        const decay = 1 - screenShake.timer / screenShake.duration;
+        centerX += (Math.random() - 0.5) * screenShake.intensity * decay * scale;
+        centerY += (Math.random() - 0.5) * screenShake.intensity * decay * scale;
+    }
+    ctx.fillStyle = '#080808'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    const bg = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, 450 * scale);
+    bg.addColorStop(0, 'rgba(20,18,15,1)'); bg.addColorStop(0.5, 'rgba(12,11,10,1)'); bg.addColorStop(1, 'rgba(8,8,8,1)');
+    ctx.fillStyle = bg; ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    drawAmbientParticles(canvas.width, canvas.height, stateTimer);
+    // Draw circles FIRST (they have opaque centers)
+    for (let i = circles.length - 1; i >= 0; i--) drawGearCircle(centerX, centerY, circles[i], scale, i);
+
+    // Floor geometry ON TOP of circles so it's visible
+    drawFloorPattern(centerX, centerY, scale, floorPatternRotation, bloodRevealProgress);
+
+    // === Blood fill inside innermost circle (Phase B) ===
+    if (bloodSubmergeProgress > 0) {
+        const floorR = 350 * scale; // match drawFloorPattern maxR
+        ctx.save();
+        // Clip to circular floor area
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, floorR, 0, Math.PI * 2);
+        ctx.clip();
+        // Blood rises from bottom of circle upward
+        const circleBottom = centerY + floorR;
+        const circleDiameter = floorR * 2;
+        const fillHeight = circleDiameter * bloodSubmergeProgress * 0.95;
+        const fillTop = circleBottom - fillHeight;
+        // Gradient: darker at bottom, translucent at top edge
+        const bloodGrad = ctx.createLinearGradient(centerX, circleBottom, centerX, fillTop);
+        bloodGrad.addColorStop(0, 'rgba(100,8,8,0.95)');
+        bloodGrad.addColorStop(0.6, 'rgba(140,15,15,0.85)');
+        bloodGrad.addColorStop(1, 'rgba(170,25,25,0.5)');
+        ctx.fillStyle = bloodGrad;
+        ctx.fillRect(centerX - floorR, fillTop, floorR * 2, fillHeight);
+        // Subtle ripple at the blood surface
+        if (bloodSubmergeProgress > 0.1) {
+            ctx.strokeStyle = 'rgba(200,30,30,0.3)';
+            ctx.lineWidth = 1.5 * scale;
+            ctx.beginPath();
+            const rippleW = floorR * 0.8;
+            const waveOffset = Math.sin(stateTimer * 0.002) * 3 * scale;
+            ctx.moveTo(centerX - rippleW, fillTop + waveOffset);
+            ctx.quadraticCurveTo(centerX, fillTop - 4 * scale + waveOffset, centerX + rippleW, fillTop + waveOffset);
+            ctx.stroke();
+        }
+        ctx.restore();
+    }
+
+    // Character, sarcophagus, cocoon drawn last (on top)
+    drawUmbilicalCord(centerX, centerY, scale, characterX, characterY, cordAttached, cordStretch);
+    drawCocoon(centerX, centerY, scale, cocoonPulse, cocoonBreakLevel);
+    drawCharacter(centerX, centerY, scale, characterX, characterY, characterPose, characterPoseTimer);
+    drawSarcophagus(centerX, centerY, scale);
+    ctx.globalAlpha = 1;
+}
+
+// --- Player-driven exit movement ---
+
+function enablePlayerMovement() {
+    playerExitEnabled = true;
+    document.addEventListener('keydown', onExitMovement);
+}
+
+function onExitMovement(e) {
+    if (!playerExitEnabled) return;
+    const step = 8;
+    if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') {
+        characterTargetX = Math.min(350, characterTargetX + step);
+    }
+    if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') {
+        characterTargetX = Math.max(-170, characterTargetX - step);
+    }
+}
+
+function waitForPlayerAtPortal() {
+    return new Promise(resolve => {
+        const checkInterval = setInterval(() => {
+            if (characterX >= 300) { // portal threshold in canvas coords
+                clearInterval(checkInterval);
+                playerExitEnabled = false;
+                document.removeEventListener('keydown', onExitMovement);
+                onPlayerCrossesPortal().then(resolve);
+            }
+        }, 100);
+    });
+}
+
+async function onPlayerCrossesPortal() {
+    if (portalCrossed) return;
+    portalCrossed = true;
+    analytics.log('portal_crossed');
+    console.log('%c🚪 Portal crossed — cloak turns red', 'color: #B71C1C; font-weight: bold;');
+
+    // Hide exit prompt
+    const exitPrompt = document.getElementById('exit-prompt');
+    exitPrompt.classList.remove('visible');
+
+    // Cloak turns red
+    cloakRed = true;
+    playSFX('portal_cross');
+    await sleep(2000);
+
+    // Fade to black
+    const endFade = document.getElementById('end-fade');
+    endFade.classList.remove('hidden');
+    await sleep(50);
+    endFade.classList.add('visible');
+    await sleep(2500);
+
+    // Show end text
+    const endText = document.getElementById('end-text');
+    endText.classList.remove('hidden');
+    await sleep(50);
+    endText.classList.add('visible');
+
+    const totalTime = (Date.now() - (analytics.startTime || Date.now())) / 1000;
+    analytics.log('game_complete', {
+        totalTimeSeconds: totalTime,
+        choiceLoops: choiceLoopCount,
+        exitType
+    });
+    console.log(`%c✅ Game complete — ${totalTime.toFixed(1)}s`, 'color: #4CAF50; font-weight: bold; font-size: 16px;');
 }
 
 document.getElementById('choice-a').addEventListener('click', () => selectChoice('a'));
