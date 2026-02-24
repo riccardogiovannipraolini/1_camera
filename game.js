@@ -265,7 +265,7 @@ function enterTitleScreen() {
 // ============================================
 
 let audioCtx = null;
-let droneOsc = null, droneGain = null;
+let lullabyAudio = null, lullabySource = null, lullabyGain = null, lullabyFilter = null;
 let lullabyAudio = null, lullabySource = null, lullabyGain = null, lullabyFilter = null;
 let audioInitialized = false;
 
@@ -273,15 +273,6 @@ function initAudio() {
     if (audioInitialized) return;
     try {
         audioCtx = new AudioContext();
-        // Ambient drone
-        droneGain = audioCtx.createGain();
-        droneGain.gain.value = 0;
-        droneGain.connect(audioCtx.destination);
-        droneOsc = audioCtx.createOscillator();
-        droneOsc.type = 'sine';
-        droneOsc.frequency.value = 55;
-        droneOsc.connect(droneGain);
-        droneOsc.start();
         // Lullaby
         lullabyFilter = audioCtx.createBiquadFilter();
         lullabyFilter.type = 'lowpass';
@@ -305,8 +296,7 @@ function initAudio() {
 }
 
 function startDrone() {
-    if (!audioCtx || !droneGain) return;
-    droneGain.gain.setTargetAtTime(0.06, audioCtx.currentTime, 2);
+    // Disabled per specifications
 }
 
 function startLullaby() {
@@ -325,132 +315,12 @@ function updateLullabyDistortion(distortion) {
         // As distortion goes up, playback slows down
         lullabyAudio.playbackRate = Math.max(0.2, 1.0 - (distortion * 0.6));
     }
-
-    if (droneGain) droneGain.gain.setTargetAtTime(0.06 + distortion * 0.08, audioCtx.currentTime, 0.5);
 }
 
 function playSFX(type) {
     if (!audioCtx) return;
-    const now = audioCtx.currentTime;
-    switch (type) {
-        case 'snap': {
-            const bufSize = audioCtx.sampleRate * 0.15;
-            const buf = audioCtx.createBuffer(1, bufSize, audioCtx.sampleRate);
-            const d = buf.getChannelData(0);
-            for (let i = 0; i < bufSize; i++) d[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufSize * 0.1));
-            const n = audioCtx.createBufferSource(); n.buffer = buf;
-            const hpf = audioCtx.createBiquadFilter(); hpf.type = 'highpass'; hpf.frequency.value = 3000;
-            const g = audioCtx.createGain(); g.gain.setValueAtTime(0.3, now); g.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
-            n.connect(hpf).connect(g).connect(audioCtx.destination); n.start(now); n.stop(now + 0.15);
-            const ping = audioCtx.createOscillator(); ping.frequency.value = 1200; ping.type = 'sine';
-            const pg = audioCtx.createGain(); pg.gain.setValueAtTime(0.15, now); pg.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
-            ping.connect(pg).connect(audioCtx.destination); ping.start(now); ping.stop(now + 0.3);
-            break;
-        }
-        case 'distort': {
-            const o1 = audioCtx.createOscillator(); o1.frequency.value = 180; o1.type = 'sawtooth';
-            const o2 = audioCtx.createOscillator(); o2.frequency.value = 187; o2.type = 'sawtooth';
-            const g = audioCtx.createGain(); g.gain.setValueAtTime(0.08, now); g.gain.exponentialRampToValueAtTime(0.001, now + 0.8);
-            const lpf = audioCtx.createBiquadFilter(); lpf.type = 'lowpass'; lpf.frequency.value = 800;
-            o1.connect(lpf); o2.connect(lpf); lpf.connect(g).connect(audioCtx.destination);
-            o1.start(now); o2.start(now); o1.stop(now + 0.8); o2.stop(now + 0.8);
-            break;
-        }
-        case 'tear': {
-            const bufSize = audioCtx.sampleRate * 0.6;
-            const buf = audioCtx.createBuffer(1, bufSize, audioCtx.sampleRate);
-            const d = buf.getChannelData(0);
-            for (let i = 0; i < bufSize; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / bufSize);
-            const n = audioCtx.createBufferSource(); n.buffer = buf;
-            const bpf = audioCtx.createBiquadFilter(); bpf.type = 'bandpass'; bpf.frequency.setValueAtTime(1500, now); bpf.frequency.linearRampToValueAtTime(300, now + 0.6); bpf.Q.value = 2;
-            const g = audioCtx.createGain(); g.gain.setValueAtTime(0.4, now); g.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
-            n.connect(bpf).connect(g).connect(audioCtx.destination); n.start(now); n.stop(now + 0.6);
-            const thud = audioCtx.createOscillator(); thud.frequency.value = 60; thud.type = 'sine';
-            const tg = audioCtx.createGain(); tg.gain.setValueAtTime(0.25, now); tg.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
-            thud.connect(tg).connect(audioCtx.destination); thud.start(now); thud.stop(now + 0.4);
-            break;
-        }
-        case 'deep': {
-            const o = audioCtx.createOscillator(); o.frequency.setValueAtTime(80, now); o.frequency.exponentialRampToValueAtTime(40, now + 0.5); o.type = 'sine';
-            const g = audioCtx.createGain(); g.gain.setValueAtTime(0.2, now); g.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
-            o.connect(g).connect(audioCtx.destination); o.start(now); o.stop(now + 0.5);
-            break;
-        }
-        case 'final': {
-            [110, 138.6, 165, 220].forEach(freq => {
-                const o = audioCtx.createOscillator(); o.frequency.value = freq; o.type = 'sine';
-                const g = audioCtx.createGain(); g.gain.setValueAtTime(0.1, now); g.gain.setTargetAtTime(0.001, now + 0.5, 0.5);
-                o.connect(g).connect(audioCtx.destination); o.start(now); o.stop(now + 2);
-            });
-            break;
-        }
-        // Session 5: Reverse sequence SFX — descending whoosh
-        case 'reverse': {
-            const o = audioCtx.createOscillator();
-            o.frequency.setValueAtTime(600, now);
-            o.frequency.exponentialRampToValueAtTime(80, now + 0.8);
-            o.type = 'sine';
-            const g = audioCtx.createGain();
-            g.gain.setValueAtTime(0.12, now);
-            g.gain.exponentialRampToValueAtTime(0.001, now + 0.8);
-            const lpf = audioCtx.createBiquadFilter();
-            lpf.type = 'lowpass'; lpf.frequency.value = 1200;
-            o.connect(lpf).connect(g).connect(audioCtx.destination);
-            o.start(now); o.stop(now + 0.8);
-            break;
-        }
-        // Session 5: Lullaby clearing — bright ascending chime
-        case 'lullaby_clear': {
-            [330, 440, 554, 660].forEach((freq, idx) => {
-                const o = audioCtx.createOscillator();
-                o.frequency.value = freq; o.type = 'sine';
-                const g = audioCtx.createGain();
-                g.gain.setValueAtTime(0, now + idx * 0.1);
-                g.gain.linearRampToValueAtTime(0.08, now + idx * 0.1 + 0.05);
-                g.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.1 + 0.6);
-                o.connect(g).connect(audioCtx.destination);
-                o.start(now + idx * 0.1); o.stop(now + idx * 0.1 + 0.6);
-            });
-            break;
-        }
-        // Session 5: Choice hover — subtle tick
-        case 'choice_hover': {
-            const o = audioCtx.createOscillator();
-            o.frequency.value = 800; o.type = 'sine';
-            const g = audioCtx.createGain();
-            g.gain.setValueAtTime(0.04, now);
-            g.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
-            o.connect(g).connect(audioCtx.destination);
-            o.start(now); o.stop(now + 0.08);
-            break;
-        }
-        // Session 9: Laceration — wet tearing noise
-        case 'laceration': {
-            const bufSize = audioCtx.sampleRate * 1.2;
-            const buf = audioCtx.createBuffer(1, bufSize, audioCtx.sampleRate);
-            const d = buf.getChannelData(0);
-            for (let i = 0; i < bufSize; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / bufSize) * 0.8;
-            const n = audioCtx.createBufferSource(); n.buffer = buf;
-            const bpf = audioCtx.createBiquadFilter(); bpf.type = 'bandpass';
-            bpf.frequency.setValueAtTime(2000, now); bpf.frequency.exponentialRampToValueAtTime(200, now + 1.2); bpf.Q.value = 3;
-            const g = audioCtx.createGain(); g.gain.setValueAtTime(0.35, now); g.gain.exponentialRampToValueAtTime(0.001, now + 1.2);
-            n.connect(bpf).connect(g).connect(audioCtx.destination); n.start(now); n.stop(now + 1.2);
-            // Low rumble underneath
-            const rumble = audioCtx.createOscillator(); rumble.frequency.value = 50; rumble.type = 'sine';
-            const rg = audioCtx.createGain(); rg.gain.setValueAtTime(0.15, now); rg.gain.exponentialRampToValueAtTime(0.001, now + 1.5);
-            rumble.connect(rg).connect(audioCtx.destination); rumble.start(now); rumble.stop(now + 1.5);
-            break;
-        }
-        // Session 9: Portal crossing — deep resonant chord
-        case 'portal_cross': {
-            [55, 82.4, 110, 146.8].forEach(freq => {
-                const o = audioCtx.createOscillator(); o.frequency.value = freq; o.type = 'sine';
-                const g = audioCtx.createGain(); g.gain.setValueAtTime(0.12, now); g.gain.setTargetAtTime(0.001, now + 1, 1);
-                o.connect(g).connect(audioCtx.destination); o.start(now); o.stop(now + 3);
-            });
-            break;
-        }
-    }
+    // const now = audioCtx.currentTime;
+    // switch (type) { ... all synth interactions removed }
 }
 
 // ============================================
