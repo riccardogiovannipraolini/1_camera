@@ -171,7 +171,7 @@ function sleep(ms) {
 
 const audioAssets = {};
 
-function fadeOutAudio(audio, durationMs) {
+function fadeOutAudio(audio, durationMs, onComplete) {
     const steps = 20;
     const stepTime = durationMs / steps;
     const volumeStep = audio.volume / steps;
@@ -180,6 +180,7 @@ function fadeOutAudio(audio, durationMs) {
         if (audio.volume <= 0) {
             clearInterval(interval);
             audio.pause();
+            if (onComplete) onComplete();
         }
     }, stepTime);
 }
@@ -252,7 +253,13 @@ function enterTitleScreen() {
     startTitleScreen().then(() => {
         const screen = document.getElementById('title-screen');
         screen.style.opacity = '0';
-        if (audioAssets.mainTheme) fadeOutAudio(audioAssets.mainTheme, 1000);
+        if (audioAssets.mainTheme) {
+            fadeOutAudio(audioAssets.mainTheme, 1000, () => {
+                initAudio();
+                if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+                startLullaby();
+            });
+        }
         setTimeout(() => {
             screen.classList.add('hidden');
             changeState(GameState.INTRO);
@@ -300,7 +307,7 @@ function startDrone() {
 
 function startLullaby() {
     if (!audioCtx || !lullabyGain) return;
-    lullabyGain.gain.setTargetAtTime(0.04, audioCtx.currentTime, 1);
+    lullabyGain.gain.setTargetAtTime(0.3, audioCtx.currentTime, 1);
     if (lullabyAudio) lullabyAudio.play().catch(() => { });
 }
 
@@ -867,7 +874,6 @@ function startTutorial() {
     currentHoldDuration = TUTORIAL_STEPS[0].holdDuration;
     showTutorialUI();
     updateTutorialPrompt();
-    startLullaby();
     console.log('TUTORIAL: Starting 7 sequential interactions...');
 }
 
