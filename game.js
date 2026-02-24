@@ -193,7 +193,33 @@ async function startTitleScreen() {
     screen.classList.remove('hidden');
     screen.style.opacity = '1';
 
-    // Start main theme
+    // To respect browser autoplay policies, we must wait for an interaction
+    // before playing audio and starting the visual sequence.
+    const prompt = document.getElementById('ts-prompt');
+    const originalText = prompt.innerText || "[RISVEGLIO]";
+
+    // Show a preliminary "click to initialize" prompt
+    prompt.innerText = "[ CLICCA PER AVVIARE L'ESPERIENZA ]";
+    prompt.style.opacity = '1';
+    prompt.classList.add('visible');
+
+    await new Promise(resolve => {
+        function onInitInput() {
+            document.removeEventListener('keydown', onInitInput);
+            document.removeEventListener('click', onInitInput);
+            resolve();
+        }
+        document.addEventListener('keydown', onInitInput);
+        document.addEventListener('click', onInitInput);
+    });
+
+    // Hide prompt to prepare for the actual sequence
+    prompt.style.opacity = '0';
+    prompt.classList.remove('visible');
+    await sleep(500);
+    prompt.innerText = originalText;
+
+    // Start main theme -- now it will play reliably since the user has interacted
     audioAssets.mainTheme = new Audio('assets/music/TEMA_PRINCIPALE.wav');
     audioAssets.mainTheme.loop = true;
     audioAssets.mainTheme.volume = 0.7;
@@ -207,11 +233,10 @@ async function startTitleScreen() {
     document.getElementById('ts-vessillo').style.opacity = '1';
 
     await sleep(1500);
-    const prompt = document.getElementById('ts-prompt');
     prompt.style.opacity = '1';
     prompt.classList.add('visible');
 
-    // Wait for any key/click
+    // Wait for any key/click to transition to the next state
     return new Promise(resolve => {
         function onInput(e) {
             document.removeEventListener('keydown', onInput);
