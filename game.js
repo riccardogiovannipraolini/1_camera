@@ -266,7 +266,6 @@ function enterTitleScreen() {
 
 let audioCtx = null;
 let lullabyAudio = null, lullabySource = null, lullabyGain = null, lullabyFilter = null;
-let lullabyAudio = null, lullabySource = null, lullabyGain = null, lullabyFilter = null;
 let audioInitialized = false;
 
 function initAudio() {
@@ -840,7 +839,7 @@ function hideIntroText() {
 
 function startSetup() {
     setupFadeAlpha = 0;
-    initAudio(); startDrone();
+    initAudio();
     console.log('SETUP: Showing chamber with 7 rotating circles...');
 }
 
@@ -1193,24 +1192,15 @@ function animateMaskTheft() {
 }
 
 function killLullaby(durationMs) {
-    if (!audioCtx || !lullabyOsc || !lullabyGain) return;
+    if (!audioCtx || !lullabyGain) return;
     const now = audioCtx.currentTime;
     const endTime = now + durationMs / 1000;
-    // Slow down frequency (like tape running out of energy)
-    lullabyOsc.frequency.setValueAtTime(lullabyOsc.frequency.value, now);
-    lullabyOsc.frequency.exponentialRampToValueAtTime(30, endTime);
-    // Increase detune for warbling effect
-    lullabyOsc.detune.setValueAtTime(lullabyOsc.detune.value, now);
-    lullabyOsc.detune.linearRampToValueAtTime(800, endTime);
+
     // Fade volume to 0
     lullabyGain.gain.setValueAtTime(lullabyGain.gain.value, now);
     lullabyGain.gain.exponentialRampToValueAtTime(0.0001, endTime);
-    // Also fade the drone
-    if (droneGain) {
-        droneGain.gain.setValueAtTime(droneGain.gain.value, now);
-        droneGain.gain.exponentialRampToValueAtTime(0.0001, endTime);
-    }
-    console.log('%c🎵 Lullaby dying — tape-out effect', 'color: #9C27B0;');
+
+    console.log('%c🎵 Lullaby fading out...', 'color: #9C27B0;');
 }
 
 function startBloodAndExit() {
@@ -1406,7 +1396,6 @@ document.getElementById('choice-b').addEventListener('click', () => selectChoice
 
 function startExit() {
     if (audioCtx && lullabyGain) lullabyGain.gain.setTargetAtTime(0, audioCtx.currentTime, 1);
-    if (audioCtx && droneGain) droneGain.gain.setTargetAtTime(0, audioCtx.currentTime, 2);
     exitNarrativeStep = 0; exitNarrativeTimer = 0; exitNarrativeAlpha = 0;
     const exitNar = document.getElementById('exit-narrative');
     if (exitNar) { exitNar.classList.remove('hidden'); exitNar.style.opacity = '0'; }
