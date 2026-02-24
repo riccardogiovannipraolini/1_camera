@@ -194,7 +194,7 @@ async function startTitleScreen() {
     screen.style.opacity = '1';
 
     // Start main theme
-    audioAssets.mainTheme = new Audio('assets/main-theme.mp3');
+    audioAssets.mainTheme = new Audio('assets/music/TEMA_PRINCIPALE.wav');
     audioAssets.mainTheme.loop = true;
     audioAssets.mainTheme.volume = 0.7;
     audioAssets.mainTheme.play().catch(() => { });
