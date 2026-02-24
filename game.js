@@ -266,7 +266,7 @@ function enterTitleScreen() {
 
 let audioCtx = null;
 let droneOsc = null, droneGain = null;
-let lullabyOsc = null, lullabyGain = null, lullabyFilter = null;
+let lullabyAudio = null, lullabySource = null, lullabyGain = null, lullabyFilter = null;
 let audioInitialized = false;
 
 function initAudio() {
@@ -291,11 +291,12 @@ function initAudio() {
         lullabyGain = audioCtx.createGain();
         lullabyGain.gain.value = 0;
         lullabyGain.connect(lullabyFilter);
-        lullabyOsc = audioCtx.createOscillator();
-        lullabyOsc.type = 'triangle';
-        lullabyOsc.frequency.value = 220;
-        lullabyOsc.connect(lullabyGain);
-        lullabyOsc.start();
+
+        lullabyAudio = new Audio('assets/music/NINNA_NANNA_REVERSE.wav');
+        lullabyAudio.loop = true;
+        lullabySource = audioCtx.createMediaElementSource(lullabyAudio);
+        lullabySource.connect(lullabyGain);
+
         audioInitialized = true;
         console.log('%c♪ Audio system initialized', 'color: #9C27B0;');
     } catch (e) {
@@ -311,16 +312,20 @@ function startDrone() {
 function startLullaby() {
     if (!audioCtx || !lullabyGain) return;
     lullabyGain.gain.setTargetAtTime(0.04, audioCtx.currentTime, 1);
+    if (lullabyAudio) lullabyAudio.play().catch(() => { });
 }
 
 function updateLullabyDistortion(distortion) {
-    if (!audioCtx || !lullabyOsc || !lullabyFilter) return;
+    if (!audioCtx || !lullabyFilter) return;
     const filterFreq = 2000 * (1 - distortion * 0.85);
-    const detune = distortion * 400;
-    const baseFreq = 220 - distortion * 80;
+
     lullabyFilter.frequency.setTargetAtTime(filterFreq, audioCtx.currentTime, 0.3);
-    lullabyOsc.detune.setTargetAtTime(detune, audioCtx.currentTime, 0.3);
-    lullabyOsc.frequency.setTargetAtTime(baseFreq, audioCtx.currentTime, 0.5);
+
+    if (lullabyAudio) {
+        // As distortion goes up, playback slows down
+        lullabyAudio.playbackRate = Math.max(0.2, 1.0 - (distortion * 0.6));
+    }
+
     if (droneGain) droneGain.gain.setTargetAtTime(0.06 + distortion * 0.08, audioCtx.currentTime, 0.5);
 }
 
