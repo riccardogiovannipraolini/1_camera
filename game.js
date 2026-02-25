@@ -36,11 +36,21 @@ const circleImage = new Image();
 circleImage.src = 'assets/circle.png';
 const circleImage2 = new Image();
 circleImage2.src = 'assets/circle_variant.png';
+const sarcophagusImage = new Image();
+sarcophagusImage.src = 'assets/sarcofago.png';
+const cocoonImage = new Image();
+cocoonImage.src = 'assets/bozzolo.png';
 
 let assetsLoaded = 0;
-const onAssetLoad = () => { assetsLoaded++; console.log(`%c🎨 Asset loaded (${assetsLoaded}/2)`, 'color: #d4af37;'); };
+const targetAssets = 4;
+const onAssetLoad = () => {
+    assetsLoaded++;
+    console.log(`%c🎨 Asset loaded (${assetsLoaded}/${targetAssets})`, 'color: #d4af37;');
+};
 circleImage.onload = onAssetLoad;
 circleImage2.onload = onAssetLoad;
+sarcophagusImage.onload = onAssetLoad;
+cocoonImage.onload = onAssetLoad;
 
 // ============================================
 // STATE MACHINE
@@ -425,7 +435,7 @@ function stopCircle(circleIndex) {
 // ============================================
 
 function drawGearCircle(centerX, centerY, circle, scale, index) {
-    if (assetsLoaded < 2) return; // wait for assets
+    if (assetsLoaded < targetAssets) return; // wait for all assets
 
     const img = (index % 2 === 0) ? circleImage : circleImage2;
 
@@ -623,32 +633,26 @@ function drawFloorPattern(centerX, centerY, scale, rotation, bloodTint) {
 }
 
 function drawSarcophagus(centerX, centerY, scale) {
+    if (assetsLoaded < targetAssets) return;
+
     ctx.save();
-    const w = 40 * scale, h = 70 * scale;
-    const g = ctx.createLinearGradient(centerX - w / 2, centerY - h / 2, centerX + w / 2, centerY + h / 2);
-    g.addColorStop(0, 'rgba(60,55,50,0.9)'); g.addColorStop(0.5, 'rgba(75,70,60,0.9)'); g.addColorStop(1, 'rgba(55,50,45,0.9)');
-    ctx.fillStyle = g; ctx.beginPath();
-    ctx.moveTo(centerX - w * 0.4, centerY - h / 2); ctx.lineTo(centerX + w * 0.4, centerY - h / 2); ctx.lineTo(centerX + w * 0.5, centerY + h / 2); ctx.lineTo(centerX - w * 0.5, centerY + h / 2);
-    ctx.closePath(); ctx.fill();
-    ctx.strokeStyle = 'rgba(140,130,110,0.6)'; ctx.lineWidth = 1.5 * scale; ctx.stroke();
-    const my = centerY - h * 0.15, mw = w * 0.6, mh = h * 0.35;
-    if (maskGlowDimmed) {
-        ctx.shadowColor = 'rgba(100,80,40,0.15)'; ctx.shadowBlur = 5 * scale;
-        ctx.fillStyle = 'rgba(120,100,50,0.4)'; ctx.beginPath(); ctx.ellipse(centerX, my, mw / 2, mh / 2, 0, 0, Math.PI * 2); ctx.fill();
-        ctx.strokeStyle = 'rgba(130,110,60,0.4)'; ctx.lineWidth = 1 * scale; ctx.stroke(); ctx.shadowBlur = 0;
-    } else {
-        ctx.shadowColor = 'rgba(212,175,55,0.4)'; ctx.shadowBlur = 15 * scale;
-        ctx.fillStyle = 'rgba(212,175,55,0.7)'; ctx.beginPath(); ctx.ellipse(centerX, my, mw / 2, mh / 2, 0, 0, Math.PI * 2); ctx.fill();
-        ctx.strokeStyle = 'rgba(230,200,80,0.8)'; ctx.lineWidth = 1 * scale; ctx.stroke(); ctx.shadowBlur = 0;
-    }
-    ctx.fillStyle = 'rgba(20,15,10,0.9)';
-    ctx.beginPath(); ctx.ellipse(centerX - mw * 0.28, my - mh * 0.05, mw * 0.18, mh * 0.12, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.beginPath(); ctx.ellipse(centerX + mw * 0.28, my - mh * 0.05, mw * 0.18, mh * 0.12, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.strokeStyle = 'rgba(180,150,40,0.4)'; ctx.lineWidth = 0.8 * scale;
-    ctx.beginPath(); ctx.moveTo(centerX, my - mh * 0.05 + mh * 0.12 * 2); ctx.lineTo(centerX, my + mh * 0.25); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(centerX - mw * 0.15, my + mh * 0.3); ctx.quadraticCurveTo(centerX, my + mh * 0.35, centerX + mw * 0.15, my + mh * 0.3); ctx.stroke();
-    ctx.strokeStyle = 'rgba(140,130,110,0.3)'; ctx.lineWidth = 0.5 * scale;
-    for (let i = 1; i <= 3; i++) { const ly = centerY + h * (0.1 + i * 0.12); ctx.beginPath(); ctx.moveTo(centerX - w * 0.35, ly); ctx.lineTo(centerX + w * 0.35, ly); ctx.stroke(); }
+
+    // Scale for the sprite (adjust this to make it "molto più piccolo")
+    const visualScale = 0.15; // Much smaller than the original 0.4
+    const imgWidth = sarcophagusImage.width * visualScale * scale;
+    const imgHeight = sarcophagusImage.height * visualScale * scale;
+
+    // Position it exactly in the center of the circles
+    const posX = centerX;
+    const posY = centerY;
+
+    // Translate and rotate so it's drawn vertically
+    ctx.translate(posX, posY);
+    ctx.rotate(-Math.PI / 2); // 90 degrees counter-clockwise
+
+    // Draw Sarcophagus Image (no background glow)
+    ctx.drawImage(sarcophagusImage, -imgWidth / 2, -imgHeight / 2, imgWidth, imgHeight);
+
     ctx.restore();
 }
 
@@ -658,24 +662,17 @@ function drawCocoon(centerX, centerY, scale, pulse, breakLevel) {
     const bw = 25 * scale, bh = 40 * scale;
     const cw = bw + Math.sin(pulse) * 2 * scale - breakLevel * 1.5 * scale;
     const ch = bh + Math.sin(pulse * 0.7) * 1.5 * scale - breakLevel * 2 * scale;
+
     if (breakLevel < 6) {
-        const ca = Math.max(0.15, 0.7 - breakLevel * 0.1);
-        ctx.shadowColor = 'rgba(100,140,120,0.3)'; ctx.shadowBlur = 10 * scale;
-        ctx.fillStyle = `rgba(60,80,70,${ca})`;
-        ctx.beginPath(); ctx.ellipse(cx, cy, Math.max(5, cw), Math.max(8, ch), Math.PI * 0.1, 0, Math.PI * 2); ctx.fill();
-        ctx.strokeStyle = `rgba(80,110,90,${ca * 0.7})`; ctx.lineWidth = 1 * scale; ctx.stroke();
-        if (breakLevel > 0) {
-            ctx.strokeStyle = `rgba(150,140,120,${0.2 + breakLevel * 0.08})`; ctx.lineWidth = 0.8 * scale;
-            for (let i = 0; i < breakLevel; i++) {
-                const ca2 = (i / 7) * Math.PI * 2 + i * 0.5, cl = (8 + i * 3) * scale;
-                ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + Math.cos(ca2) * cl, cy + Math.sin(ca2) * cl); ctx.stroke();
-            }
-        }
-        ctx.strokeStyle = `rgba(90,130,100,${0.3 - breakLevel * 0.04})`; ctx.lineWidth = 0.5 * scale;
-        for (let i = 0; i < Math.max(1, 4 - breakLevel); i++) {
-            const va = (i / 4) * Math.PI + pulse * 0.1;
-            ctx.beginPath(); ctx.moveTo(cx, cy - ch * 0.3);
-            ctx.quadraticCurveTo(cx + Math.cos(va) * cw * 0.6, cy + Math.sin(va) * ch * 0.4, cx, cy + ch * 0.3); ctx.stroke();
+        if (assetsLoaded >= targetAssets) {
+            // Scale and draw the image preserving its native aspect ratio
+            const aspect = cocoonImage.width / cocoonImage.height;
+            // The height pulses with 'ch', we scale the image relative to 'ch'
+            const extraScale = 1.3; // tweak this to make it fit visually with the scene
+            const imgH = ch * 2 * extraScale;
+            const imgW = imgH * aspect;
+            // Draw the uploaded cocoon sprite
+            ctx.drawImage(cocoonImage, cx - imgW / 2, cy - imgH / 2, imgW, imgH);
         }
     }
     ctx.shadowBlur = 0; ctx.restore();
