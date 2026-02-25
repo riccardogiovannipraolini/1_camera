@@ -40,9 +40,11 @@ const sarcophagusImage = new Image();
 sarcophagusImage.src = 'assets/sarcofago.png';
 const cocoonImage = new Image();
 cocoonImage.src = 'assets/bozzolo.png';
+const varcoImage = new Image();
+varcoImage.src = 'assets/varco_transparent.png';
 
 let assetsLoaded = 0;
-const targetAssets = 4;
+const targetAssets = 5;
 const onAssetLoad = () => {
     assetsLoaded++;
     console.log(`%c🎨 Asset loaded (${assetsLoaded}/${targetAssets})`, 'color: #d4af37;');
@@ -51,6 +53,7 @@ circleImage.onload = onAssetLoad;
 circleImage2.onload = onAssetLoad;
 sarcophagusImage.onload = onAssetLoad;
 cocoonImage.onload = onAssetLoad;
+varcoImage.onload = onAssetLoad;
 
 // ============================================
 // STATE MACHINE
@@ -365,6 +368,7 @@ let characterPoseTimer = 0;
 let cordAttached = true;
 let cordStretch = 0;
 let cocoonBreakLevel = 0;
+let lacerationProgress = 0;
 let lullabyDistortionLevel = 0;
 let tutorialCompleted = false;
 let stepTransitionTimer = 0;
@@ -1218,10 +1222,8 @@ async function runBloodAndExit() {
     analytics.log('blood_sequence_start');
     console.log('%c🩸 Blood sequence — Phase A: Rivelazione', 'color: #F44336; font-weight: bold;');
 
-    // Step 1: Laceration tears open on right wall
-    const laceration = document.getElementById('laceration');
-    laceration.classList.remove('hidden');
-    laceration.classList.add('opening');
+    // Step 1: Laceration tears open on right wall (rendered in Canvas)
+    bloodPhase = 'laceration_open';
     playSFX('laceration');
     await sleep(2500);
 
@@ -1253,6 +1255,9 @@ async function runBloodAndExit() {
 
 function updateBloodExit() {
     updateCommon();
+    if (bloodPhase === 'laceration_open' && lacerationProgress < 1) {
+        lacerationProgress = Math.min(1, lacerationProgress + deltaTime / 2500);
+    }
     // Advance blood reveal progress (Phase A: 0→1 over ~4s)
     if (bloodPhase === 'reveal' && bloodRevealProgress < 1) {
         bloodRevealProgress = Math.min(1, bloodRevealProgress + deltaTime / 4000);
@@ -1279,7 +1284,25 @@ function renderBloodExit() {
 
     drawAmbientParticles(canvas.width, canvas.height, stateTimer);
     // Draw circles FIRST (they have opaque centers)
-    for (let i = circles.length - 1; i >= 0; i--) drawGearCircle(centerX, centerY, circles[i], scale, i);
+    for (let i = circles.length - 1; i >= 0; i--) {
+        drawGearCircle(centerX, centerY, circles[i], scale, i);
+    }
+
+    // Draw laceration ON TOP of all circles, covering the right radius
+    if (lacerationProgress > 0 && varcoImage.complete) {
+        // Full radius width + some extra margin to go past the circles
+        const maxLacerationW = (BASE_WIDTH * 0.55) * scale;
+        const lw = maxLacerationW * lacerationProgress;
+        const lh = BASE_HEIGHT * 0.25 * scale; // Increased height
+        const lx = centerX; // Start from the center and stretch rightwards
+        const ly = centerY - lh / 2; // Keep it vertically centered
+
+        ctx.save();
+        ctx.shadowColor = 'rgba(220, 10, 10, 0.5)';
+        ctx.shadowBlur = 20 * scale;
+        ctx.drawImage(varcoImage, lx, ly, lw, lh);
+        ctx.restore();
+    }
 
     // Floor geometry ON TOP of circles so it's visible
     drawFloorPattern(centerX, centerY, scale, floorPatternRotation, bloodRevealProgress);
@@ -1292,29 +1315,23 @@ function renderBloodExit() {
         ctx.beginPath();
         ctx.arc(centerX, centerY, floorR, 0, Math.PI * 2);
         ctx.clip();
-        // Blood rises from bottom of circle upward
-        const circleBottom = centerY + floorR;
-        const circleDiameter = floorR * 2;
-        const fillHeight = circleDiameter * bloodSubmergeProgress * 0.95;
-        const fillTop = circleBottom - fillHeight;
-        // Gradient: darker at bottom, translucent at top edge
-        const bloodGrad = ctx.createLinearGradient(centerX, circleBottom, centerX, fillTop);
+
+        // Blood expands from the laceration on the right
+        const lacerationX = centerX + floorR;
+        const lacerationY = centerY;
+
+        const maxRadius = floorR * 2.2;
+        const currentRadius = maxRadius * bloodSubmergeProgress;
+
+        ctx.beginPath();
+        ctx.arc(lacerationX, lacerationY, currentRadius, 0, Math.PI * 2);
+
+        const bloodGrad = ctx.createRadialGradient(lacerationX, lacerationY, 0, lacerationX, lacerationY, currentRadius);
         bloodGrad.addColorStop(0, 'rgba(100,8,8,0.95)');
         bloodGrad.addColorStop(0.6, 'rgba(140,15,15,0.85)');
         bloodGrad.addColorStop(1, 'rgba(170,25,25,0.5)');
         ctx.fillStyle = bloodGrad;
-        ctx.fillRect(centerX - floorR, fillTop, floorR * 2, fillHeight);
-        // Subtle ripple at the blood surface
-        if (bloodSubmergeProgress > 0.1) {
-            ctx.strokeStyle = 'rgba(200,30,30,0.3)';
-            ctx.lineWidth = 1.5 * scale;
-            ctx.beginPath();
-            const rippleW = floorR * 0.8;
-            const waveOffset = Math.sin(stateTimer * 0.002) * 3 * scale;
-            ctx.moveTo(centerX - rippleW, fillTop + waveOffset);
-            ctx.quadraticCurveTo(centerX, fillTop - 4 * scale + waveOffset, centerX + rippleW, fillTop + waveOffset);
-            ctx.stroke();
-        }
+        ctx.fill();
         ctx.restore();
     }
 

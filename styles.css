@@ -591,42 +591,7 @@ body {
     }
 }
 
-/* Horizontal laceration on right wall */
-#laceration {
-    position: absolute;
-    right: 0%;
-    top: 50%;
-    transform: translateY(-50%);
-    height: 30px;
-    width: 0%;
-    background: linear-gradient(to left,
-            rgba(220, 10, 10, 1) 0%,
-            rgba(180, 0, 0, 0.8) 50%,
-            transparent 100%);
-    z-index: 3;
-    clip-path: polygon(100% 20%, 100% 80%, 50% 100%, 0% 50%, 50% 0%);
-}
 
-#laceration.opening {
-    animation: tear-open-horizontal 2s ease-out forwards;
-}
-
-@keyframes tear-open-horizontal {
-    0% {
-        width: 0%;
-        opacity: 0;
-    }
-
-    30% {
-        width: 15%;
-        opacity: 0.5;
-    }
-
-    100% {
-        width: 30%;
-        opacity: 1;
-    }
-}
 
 /* Exit prompt */
 #exit-prompt {
