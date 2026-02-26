@@ -41,19 +41,24 @@ sarcophagusImage.src = 'assets/sarcofago.png';
 const cocoonImage = new Image();
 cocoonImage.src = 'assets/bozzolo.png';
 const varcoImage = new Image();
-varcoImage.src = 'assets/varco_transparent.png';
+varcoImage.src = 'assets/varco.png';
 
 let assetsLoaded = 0;
 const targetAssets = 5;
-const onAssetLoad = () => {
+const onAssetLoad = (src) => {
     assetsLoaded++;
-    console.log(`%c🎨 Asset loaded (${assetsLoaded}/${targetAssets})`, 'color: #d4af37;');
+    console.log(`%c🎨 Asset loaded (${assetsLoaded}/${targetAssets}): ${src}`, 'color: #d4af37;');
 };
-circleImage.onload = onAssetLoad;
-circleImage2.onload = onAssetLoad;
-sarcophagusImage.onload = onAssetLoad;
-cocoonImage.onload = onAssetLoad;
-varcoImage.onload = onAssetLoad;
+circleImage.onload = () => onAssetLoad('circle.png');
+circleImage.onerror = () => console.error('FAILED TO LOAD: circle.png');
+circleImage2.onload = () => onAssetLoad('circle_variant.png');
+circleImage2.onerror = () => console.error('FAILED TO LOAD: circle_variant.png');
+sarcophagusImage.onload = () => onAssetLoad('sarcofago.png');
+sarcophagusImage.onerror = () => console.error('FAILED TO LOAD: sarcofago.png');
+cocoonImage.onload = () => onAssetLoad('bozzolo.png');
+cocoonImage.onerror = () => console.error('FAILED TO LOAD: bozzolo.png');
+varcoImage.onload = () => onAssetLoad('varco.png');
+varcoImage.onerror = () => console.error('FAILED TO LOAD: varco.png');
 
 // ============================================
 // STATE MACHINE
