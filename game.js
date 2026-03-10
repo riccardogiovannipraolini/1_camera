@@ -33,18 +33,20 @@ window.addEventListener('resize', resizeCanvas);
 // Preload circle asset from Figma
 // Preload circle assets from Figma
 const circleImage = new Image();
-circleImage.src = 'assets/circle.png';
+circleImage.src = 'assets/visuals/circle.png';
 const circleImage2 = new Image();
-circleImage2.src = 'assets/circle_variant.png';
+circleImage2.src = 'assets/visuals/circle_variant.png';
 const sarcophagusImage = new Image();
-sarcophagusImage.src = 'assets/sarcofago.png';
+sarcophagusImage.src = 'assets/visuals/sarcofago.png';
 const cocoonImage = new Image();
-cocoonImage.src = 'assets/bozzolo.png';
+cocoonImage.src = 'assets/visuals/bozzolo.png';
 const varcoImage = new Image();
-varcoImage.src = 'assets/varco.png';
+varcoImage.src = 'assets/visuals/varco.png';
+const characterSheet = new Image();
+characterSheet.src = 'assets/visuals/pg_senzamantella.png';
 
 let assetsLoaded = 0;
-const targetAssets = 5;
+const targetAssets = 6;
 const onAssetLoad = (src) => {
     assetsLoaded++;
     console.log(`%c🎨 Asset loaded (${assetsLoaded}/${targetAssets}): ${src}`, 'color: #d4af37;');
@@ -59,6 +61,8 @@ cocoonImage.onload = () => onAssetLoad('bozzolo.png');
 cocoonImage.onerror = () => console.error('FAILED TO LOAD: bozzolo.png');
 varcoImage.onload = () => onAssetLoad('varco.png');
 varcoImage.onerror = () => console.error('FAILED TO LOAD: varco.png');
+characterSheet.onload = () => onAssetLoad('pg_senzamantella.png');
+characterSheet.onerror = () => console.error('FAILED TO LOAD: pg_senzamantella.png');
 
 // ============================================
 // STATE MACHINE
@@ -370,6 +374,17 @@ let characterX = COCOON_POS.x, characterY = COCOON_POS.y;
 let characterTargetX = COCOON_POS.x, characterTargetY = COCOON_POS.y;
 let characterPose = 'curled';
 let characterPoseTimer = 0;
+
+// Spritesheet animation state
+const CHAR_SHEET_COLS = 3;
+const CHAR_SHEET_ROWS = 2;
+const CHAR_FRAME_W = 336;   // 1008 / 3
+const CHAR_FRAME_H = 527;   // floor(1055 / 2) — last row slightly shorter, safe crop
+const CHAR_TOTAL_FRAMES = 6;
+const CHAR_FRAME_DURATION = 120; // ms per frame
+let characterAnimFrame = 0;
+let characterAnimTimer = 0;
+let characterLastPose = 'curled';
 let cordAttached = true;
 let cordStretch = 0;
 let cocoonBreakLevel = 0;
@@ -377,6 +392,18 @@ let lacerationProgress = 0;
 let lullabyDistortionLevel = 0;
 let tutorialCompleted = false;
 let stepTransitionTimer = 0;
+
+// Movement-based tutorial system
+const CORD_THRESHOLDS = [50, 90, 130, 170, 220, 280]; // 6 distance thresholds from cocoon
+const CORD_CIRCLE_ORDER = [5, 4, 3, 2, 1, 0];         // which circle stops at each threshold
+const FREE_MOVE_RADIUS = 330;     // radius for free movement after cord snaps
+const SARCOPHAGUS_TRIGGER_DIST = 30; // distance to sarcophagus to trigger CHOICE
+const CHAR_MOVE_SPEED = 2.5;      // movement speed (canvas units per frame-tick)
+let cordMaxLength = 40;           // current max cord length (grows as circles stop)
+let cordCirclesStopped = 0;       // how many circles stopped via cord (0-6)
+let tutorialPhase = 'hold';       // 'hold' | 'emerging' | 'cord_walk' | 'free'
+let emergingTimer = 0;            // timer for emerging animation
+let keysDown = {};                // continuous key state tracking
 
 let screenShake = { intensity: 0, timer: 0, duration: 0 };
 let feedbackTextObj = null;
@@ -646,8 +673,8 @@ function drawSarcophagus(centerX, centerY, scale) {
 
     ctx.save();
 
-    // Scale for the sprite (adjust this to make it "molto più piccolo")
-    const visualScale = 0.15; // Much smaller than the original 0.4
+    // Scale for the sprite
+    const visualScale = 0.08; // Much smaller 
     const imgWidth = sarcophagusImage.width * visualScale * scale;
     const imgHeight = sarcophagusImage.height * visualScale * scale;
 
@@ -657,7 +684,7 @@ function drawSarcophagus(centerX, centerY, scale) {
 
     // Translate and rotate so it's drawn vertically
     ctx.translate(posX, posY);
-    ctx.rotate(-Math.PI / 2); // 90 degrees counter-clockwise
+    ctx.rotate(0); // Rotated 90 degrees to the right (from -90 to 0)
 
     // Draw Sarcophagus Image (no background glow)
     ctx.drawImage(sarcophagusImage, -imgWidth / 2, -imgHeight / 2, imgWidth, imgHeight);
@@ -713,6 +740,25 @@ function drawCharacter(centerX, centerY, scale, charX, charY, pose, poseTimer) {
     ctx.shadowColor = 'rgba(240,230,210,0.2)'; ctx.shadowBlur = 8 * s;
     const skin = 'rgba(180,160,140,0.8)';
     const dark = 'rgba(60,50,45,0.9)';
+
+    // Helper: draw sprite from spritesheet
+    const drawSpriteFrame = (frame) => {
+        if (!characterSheet.complete || !characterSheet.naturalWidth) return false;
+        const col = frame % CHAR_SHEET_COLS;
+        const row = Math.floor(frame / CHAR_SHEET_COLS);
+        const sx = col * CHAR_FRAME_W;
+        const sy = row * CHAR_FRAME_H;
+        // Target height: roughly match the old character height (~56px at scale 1)
+        const targetH = 70 * s;
+        const aspect = CHAR_FRAME_W / CHAR_FRAME_H;
+        const targetW = targetH * aspect;
+        // Draw centered, with feet at bottom
+        ctx.drawImage(characterSheet,
+            sx, sy, CHAR_FRAME_W, CHAR_FRAME_H,
+            -targetW / 2, -targetH * 0.85, targetW, targetH);
+        return true;
+    };
+
     switch (pose) {
         case 'curled':
             ctx.fillStyle = skin; ctx.beginPath(); ctx.ellipse(0, 0, 10 * s, 8 * s, 0.3, 0, Math.PI * 2); ctx.fill();
@@ -742,29 +788,35 @@ function drawCharacter(centerX, centerY, scale, charX, charY, pose, poseTimer) {
             ctx.beginPath(); ctx.moveTo(5 * s, -3 * s); ctx.quadraticCurveTo(12 * s, 8 * s, 8 * s, 18 * s); ctx.stroke();
             ctx.beginPath(); ctx.moveTo(-3 * s, 18 * s); ctx.lineTo(-4 * s, 28 * s); ctx.stroke();
             ctx.beginPath(); ctx.moveTo(3 * s, 18 * s); ctx.lineTo(4 * s, 28 * s); ctx.stroke(); break;
-        case 'walking': {
-            const wc = Math.sin(poseTimer * 5); ctx.fillStyle = skin;
-            ctx.beginPath(); ctx.ellipse(0, 2 * s, 7 * s, 17 * s, 0, 0, Math.PI * 2); ctx.fill();
-            ctx.beginPath(); ctx.arc(0, -17 * s, 6 * s, 0, Math.PI * 2); ctx.fill();
-            ctx.strokeStyle = skin; ctx.lineWidth = 3.5 * s;
-            ctx.beginPath(); ctx.moveTo(-5 * s, -5 * s); ctx.quadraticCurveTo(-10 * s, -15 * s, -2 * s, -19 * s); ctx.stroke();
-            ctx.lineWidth = 3 * s;
-            ctx.beginPath(); ctx.moveTo(5 * s, -3 * s); ctx.quadraticCurveTo(14 * s, 5 * s, 10 * s, 14 * s); ctx.stroke();
-            ctx.beginPath(); ctx.moveTo(-3 * s, 16 * s); ctx.lineTo(-3 * s + wc * 4 * s, 28 * s); ctx.stroke();
-            ctx.beginPath(); ctx.moveTo(3 * s, 16 * s); ctx.lineTo(3 * s - wc * 4 * s, 28 * s); ctx.stroke(); break;
-        }
+        case 'walking':
+            if (!drawSpriteFrame(characterAnimFrame)) {
+                // Fallback to primitive if sheet not loaded
+                const wc = Math.sin(poseTimer * 5); ctx.fillStyle = skin;
+                ctx.beginPath(); ctx.ellipse(0, 2 * s, 7 * s, 17 * s, 0, 0, Math.PI * 2); ctx.fill();
+                ctx.beginPath(); ctx.arc(0, -17 * s, 6 * s, 0, Math.PI * 2); ctx.fill();
+                ctx.strokeStyle = skin; ctx.lineWidth = 3.5 * s;
+                ctx.beginPath(); ctx.moveTo(-5 * s, -5 * s); ctx.quadraticCurveTo(-10 * s, -15 * s, -2 * s, -19 * s); ctx.stroke();
+                ctx.lineWidth = 3 * s;
+                ctx.beginPath(); ctx.moveTo(5 * s, -3 * s); ctx.quadraticCurveTo(14 * s, 5 * s, 10 * s, 14 * s); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(-3 * s, 16 * s); ctx.lineTo(-3 * s + wc * 4 * s, 28 * s); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(3 * s, 16 * s); ctx.lineTo(3 * s - wc * 4 * s, 28 * s); ctx.stroke();
+            }
+            break;
         case 'standing':
-            ctx.fillStyle = skin;
-            ctx.beginPath(); ctx.ellipse(0, 2 * s, 7 * s, 17 * s, 0, 0, Math.PI * 2); ctx.fill();
-            ctx.beginPath(); ctx.arc(0, -17 * s, 6.5 * s, 0, Math.PI * 2); ctx.fill();
-            ctx.fillStyle = dark;
-            ctx.beginPath(); ctx.arc(-2.5 * s, -18 * s, 1 * s, 0, Math.PI * 2); ctx.fill();
-            ctx.beginPath(); ctx.arc(2.5 * s, -18 * s, 1 * s, 0, Math.PI * 2); ctx.fill();
-            ctx.strokeStyle = skin; ctx.lineWidth = 3 * s;
-            ctx.beginPath(); ctx.moveTo(-6 * s, -4 * s); ctx.quadraticCurveTo(-11 * s, 6 * s, -7 * s, 16 * s); ctx.stroke();
-            ctx.beginPath(); ctx.moveTo(6 * s, -4 * s); ctx.quadraticCurveTo(11 * s, 6 * s, 7 * s, 16 * s); ctx.stroke();
-            ctx.beginPath(); ctx.moveTo(-3 * s, 16 * s); ctx.lineTo(-4 * s, 28 * s); ctx.stroke();
-            ctx.beginPath(); ctx.moveTo(3 * s, 16 * s); ctx.lineTo(4 * s, 28 * s); ctx.stroke();
+            if (!drawSpriteFrame(0)) {
+                // Fallback to primitive if sheet not loaded
+                ctx.fillStyle = skin;
+                ctx.beginPath(); ctx.ellipse(0, 2 * s, 7 * s, 17 * s, 0, 0, Math.PI * 2); ctx.fill();
+                ctx.beginPath(); ctx.arc(0, -17 * s, 6.5 * s, 0, Math.PI * 2); ctx.fill();
+                ctx.fillStyle = dark;
+                ctx.beginPath(); ctx.arc(-2.5 * s, -18 * s, 1 * s, 0, Math.PI * 2); ctx.fill();
+                ctx.beginPath(); ctx.arc(2.5 * s, -18 * s, 1 * s, 0, Math.PI * 2); ctx.fill();
+                ctx.strokeStyle = skin; ctx.lineWidth = 3 * s;
+                ctx.beginPath(); ctx.moveTo(-6 * s, -4 * s); ctx.quadraticCurveTo(-11 * s, 6 * s, -7 * s, 16 * s); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(6 * s, -4 * s); ctx.quadraticCurveTo(11 * s, 6 * s, 7 * s, 16 * s); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(-3 * s, 16 * s); ctx.lineTo(-4 * s, 28 * s); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(3 * s, 16 * s); ctx.lineTo(4 * s, 28 * s); ctx.stroke();
+            }
             // Session 8: Cloak overlay (white or red)
             if (hasCloak) {
                 const cStroke = cloakRed ? 'rgba(160,30,30,0.6)' : 'rgba(240,235,225,0.5)';
@@ -873,17 +925,163 @@ let currentHoldDuration = 2000;
 function startTutorial() {
     tutorialStep = 0;
     tutorialCompleted = false;
+    tutorialPhase = 'hold';
     characterPose = 'curled';
     characterX = COCOON_POS.x; characterY = COCOON_POS.y;
     characterTargetX = COCOON_POS.x; characterTargetY = COCOON_POS.y;
     cordAttached = true; cordStretch = 0; cocoonBreakLevel = 0;
+    cordMaxLength = 40; cordCirclesStopped = 0; emergingTimer = 0;
     currentHoldDuration = TUTORIAL_STEPS[0].holdDuration;
     showTutorialUI();
     updateTutorialPrompt();
-    console.log('TUTORIAL: Starting 7 sequential interactions...');
+    console.log('TUTORIAL: Starting with hold interaction, then free movement...');
 }
 
-function updateTutorial() { updateCommon(); }
+function updateTutorial() {
+    updateCommon();
+
+    if (tutorialPhase === 'emerging') {
+        // Brief animation: character emerges from cocoon
+        emergingTimer += deltaTime;
+        const t = emergingTimer / 800; // 800ms emergence
+        if (t < 0.5) {
+            characterPose = 'spasm';
+        } else {
+            characterPose = 'struggling';
+        }
+        // Push character slightly out from cocoon
+        characterX = COCOON_POS.x + 25 * Math.min(t, 1);
+        characterY = COCOON_POS.y - 5 * Math.min(t, 1);
+        characterTargetX = characterX;
+        characterTargetY = characterY;
+        if (t >= 1) {
+            tutorialPhase = 'cord_walk';
+            characterPose = 'walking';
+            hideTutorialUI();
+            showFeedback('...muoviti con le frecce...');
+            console.log('%c🚶 Cord walk phase started', 'color: #4CAF50;');
+        }
+    }
+
+    if (tutorialPhase === 'cord_walk') {
+        // Read arrow keys and move character
+        let dx = 0, dy = 0;
+        if (keysDown['ArrowLeft']  || keysDown['a'] || keysDown['A']) dx -= 1;
+        if (keysDown['ArrowRight'] || keysDown['d'] || keysDown['D']) dx += 1;
+        if (keysDown['ArrowUp']    || keysDown['w'] || keysDown['W']) dy -= 1;
+        if (keysDown['ArrowDown']  || keysDown['s'] || keysDown['S']) dy += 1;
+        // Normalize diagonal
+        const len = Math.sqrt(dx * dx + dy * dy);
+        if (len > 0) { dx /= len; dy /= len; }
+
+        const speed = CHAR_MOVE_SPEED * (deltaTime * 0.06);
+        let newX = characterX + dx * speed;
+        let newY = characterY + dy * speed;
+
+        // Clamp to cord max length from cocoon
+        const distX = newX - COCOON_POS.x;
+        const distY = newY - COCOON_POS.y;
+        const dist = Math.sqrt(distX * distX + distY * distY);
+
+        if (dist > cordMaxLength) {
+            // Clamp to max cord length
+            newX = COCOON_POS.x + (distX / dist) * cordMaxLength;
+            newY = COCOON_POS.y + (distY / dist) * cordMaxLength;
+        }
+
+        characterX = newX;
+        characterY = newY;
+        characterTargetX = newX;
+        characterTargetY = newY;
+
+        // Update cord stretch visual
+        cordStretch = dist / cordMaxLength;
+
+        // Update pose
+        if (len > 0) {
+            characterPose = 'walking';
+        } else {
+            characterPose = 'standing';
+        }
+
+        // Check if at max cord extension — stop next circle
+        if (dist >= cordMaxLength * 0.95 && cordCirclesStopped < 6) {
+            const circleIdx = CORD_CIRCLE_ORDER[cordCirclesStopped];
+            stopCircle(circleIdx);
+            playSFX('distort');
+            triggerScreenShake(4 + cordCirclesStopped, 400);
+            cordCirclesStopped++;
+
+            // Increase cord max length
+            if (cordCirclesStopped < 6) {
+                cordMaxLength = CORD_THRESHOLDS[cordCirclesStopped];
+            }
+
+            // Update lullaby distortion progressively
+            lullabyDistortionLevel = cordCirclesStopped / 6;
+            updateLullabyDistortion(lullabyDistortionLevel);
+
+            console.log(`%c🔗 Cord threshold ${cordCirclesStopped}/6 — circle ${circleIdx} stopped, new max: ${cordMaxLength}`, 'color: #FF9800;');
+
+            if (cordCirclesStopped >= 6) {
+                // All circles stopped — snap cord!
+                cordAttached = false;
+                cordStretch = 0;
+                tutorialPhase = 'free';
+                playSFX('tear');
+                triggerScreenShake(8, 600);
+                showFeedback('...libero.');
+                console.log('%c💥 Cord snapped! Free movement enabled.', 'color: #F44336; font-weight: bold;');
+            }
+        }
+    }
+
+    if (tutorialPhase === 'free') {
+        // Free movement within floor pattern radius
+        let dx = 0, dy = 0;
+        if (keysDown['ArrowLeft']  || keysDown['a'] || keysDown['A']) dx -= 1;
+        if (keysDown['ArrowRight'] || keysDown['d'] || keysDown['D']) dx += 1;
+        if (keysDown['ArrowUp']    || keysDown['w'] || keysDown['W']) dy -= 1;
+        if (keysDown['ArrowDown']  || keysDown['s'] || keysDown['S']) dy += 1;
+        const len = Math.sqrt(dx * dx + dy * dy);
+        if (len > 0) { dx /= len; dy /= len; }
+
+        const speed = CHAR_MOVE_SPEED * (deltaTime * 0.06);
+        let newX = characterX + dx * speed;
+        let newY = characterY + dy * speed;
+
+        // Clamp to floor pattern radius from center (0,0)
+        const distFromCenter = Math.sqrt(newX * newX + newY * newY);
+        if (distFromCenter > FREE_MOVE_RADIUS) {
+            newX = (newX / distFromCenter) * FREE_MOVE_RADIUS;
+            newY = (newY / distFromCenter) * FREE_MOVE_RADIUS;
+        }
+
+        characterX = newX;
+        characterY = newY;
+        characterTargetX = newX;
+        characterTargetY = newY;
+
+        // Update pose
+        if (len > 0) {
+            characterPose = 'walking';
+        } else {
+            characterPose = 'standing';
+        }
+
+        // Check proximity to sarcophagus
+        const dsx = characterX - SARCOPHAGUS_POS.x;
+        const dsy = characterY - SARCOPHAGUS_POS.y;
+        const distToSarc = Math.sqrt(dsx * dsx + dsy * dsy);
+        if (distToSarc < SARCOPHAGUS_TRIGGER_DIST) {
+            tutorialCompleted = true;
+            characterPose = 'standing';
+            console.log('%c⚰️ Sarcophagus reached — triggering CHOICE', 'color: #d4af37; font-weight: bold;');
+            changeState(GameState.CHOICE);
+        }
+    }
+}
+
 function renderTutorial() { renderChamber(1); }
 
 function updateTutorialPrompt() {
@@ -904,6 +1102,18 @@ function updateCommon() {
     cocoonPulse += deltaTime * 0.003;
     floorPatternRotation += deltaTime * 0.00002;
     characterPoseTimer += deltaTime * 0.001;
+    // Spritesheet animation advance
+    if (characterPose === 'walking') {
+        characterAnimTimer += deltaTime;
+        if (characterAnimTimer >= CHAR_FRAME_DURATION) {
+            characterAnimFrame = (characterAnimFrame + 1) % CHAR_TOTAL_FRAMES;
+            characterAnimTimer -= CHAR_FRAME_DURATION;
+        }
+    } else {
+        characterAnimFrame = 0;
+        characterAnimTimer = 0;
+    }
+    characterLastPose = characterPose;
     // Circle rotation + flash decay
     circles.forEach(c => {
         if (!c.isStopped) {
@@ -980,7 +1190,7 @@ function renderChamber(alpha) {
     }
     const bl = isActiveState ? cocoonBreakLevel : 0;
     drawCocoon(centerX, centerY, scale, cocoonPulse, bl);
-    if ((currentState === GameState.TUTORIAL && tutorialStep > 0) || currentState === GameState.CHOICE || currentState === GameState.FINAL_SEQUENCE || currentState === GameState.BLOOD_EXIT) {
+    if ((currentState === GameState.TUTORIAL && tutorialPhase !== 'hold') || currentState === GameState.CHOICE || currentState === GameState.FINAL_SEQUENCE || currentState === GameState.BLOOD_EXIT) {
         drawCharacter(centerX, centerY, scale, characterX, characterY, characterPose, characterPoseTimer);
     }
     drawSarcophagus(centerX, centerY, scale);
@@ -1479,10 +1689,12 @@ let holdStartTime = 0;
 let holdAnimationFrame = null;
 
 document.addEventListener('keydown', (e) => {
+    keysDown[e.key] = true;
     if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') {
         initAudio();
         if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
-        if (!isHolding && (currentState === GameState.SETUP || currentState === GameState.TUTORIAL)) {
+        // Only allow hold interaction during SETUP or TUTORIAL hold phase
+        if (!isHolding && (currentState === GameState.SETUP || (currentState === GameState.TUTORIAL && tutorialPhase === 'hold'))) {
             if (currentState === GameState.TUTORIAL && stepTransitionTimer > 0) return;
             if (tutorialCompleted) return;
             e.preventDefault();
@@ -1492,10 +1704,14 @@ document.addEventListener('keydown', (e) => {
             updateProgress();
         }
     }
-    // Choice keyboard handled by onChoiceKey (added/removed with choice UI)
+    // Prevent arrow scrolling during movement phases
+    if (currentState === GameState.TUTORIAL && (tutorialPhase === 'cord_walk' || tutorialPhase === 'free')) {
+        if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) e.preventDefault();
+    }
 });
 
 document.addEventListener('keyup', (e) => {
+    keysDown[e.key] = false;
     if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') {
         if (isHolding) {
             e.preventDefault();
@@ -1535,31 +1751,21 @@ function onHoldComplete() {
 
     if (currentState === GameState.SETUP) {
         changeState(GameState.TUTORIAL);
-    } else if (currentState === GameState.TUTORIAL) {
-        const step = TUTORIAL_STEPS[tutorialStep];
-        if (!step) return;
+    } else if (currentState === GameState.TUTORIAL && tutorialPhase === 'hold') {
+        // First interaction: stop outermost circle, break cocoon, start emergence
+        const step = TUTORIAL_STEPS[0];
         stopCircle(step.circleIndex);
         playSFX(step.sfx);
         triggerScreenShake(step.shakeIntensity, 400);
         showFeedback(step.feedbackText);
-        const tp = step.characterProgress;
-        characterTargetX = COCOON_POS.x + (SARCOPHAGUS_POS.x - COCOON_POS.x) * tp;
-        characterTargetY = COCOON_POS.y + (SARCOPHAGUS_POS.y - COCOON_POS.y) * tp;
-        characterPose = step.characterPose;
-        characterPoseTimer = 0;
-        if (step.cordStretched >= 2) cordAttached = false; else cordStretch = step.cordStretched;
-        cocoonBreakLevel = Math.min(6, tutorialStep + 1);
-        lullabyDistortionLevel = step.lullabyDistortion;
-        updateLullabyDistortion(step.lullabyDistortion);
-        tutorialStep++;
-        stepTransitionTimer = 800;
-        if (tutorialStep >= 7) {
-            tutorialCompleted = true;
-            setTimeout(() => changeState(GameState.CHOICE), 2000);
-        } else {
-            currentHoldDuration = TUTORIAL_STEPS[tutorialStep].holdDuration;
-            setTimeout(() => updateTutorialPrompt(), 800);
-        }
+        cocoonBreakLevel = 6;
+        cordAttached = true;
+        cordStretch = 0;
+        cordMaxLength = CORD_THRESHOLDS[0]; // first threshold
+        tutorialPhase = 'emerging';
+        emergingTimer = 0;
+        tutorialStep = 1; // mark first step done
+        console.log('%c🥚 Cocoon broken — character emerging...', 'color: #FF5722; font-weight: bold;');
     }
 }
 
